@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 
 // Mock data
 const employeeData = {
@@ -68,7 +69,86 @@ const employeeData = {
   ],
 };
 
+// Mock notifications
+const notifications = [
+  {
+    id: 1,
+    type: "task",
+    message: "New task assigned: Design Mobile App Wireframes",
+    time: "10 minutes ago",
+    read: false,
+  },
+  {
+    id: 2,
+    type: "message",
+    message: "John Manager commented on your design",
+    time: "1 hour ago",
+    read: false,
+  },
+  {
+    id: 3,
+    type: "alert",
+    message: "Project deadline approaching: Website Redesign",
+    time: "3 hours ago",
+    read: true,
+  },
+];
+
 const EmployeeDashboard: React.FC = () => {
+  // State for dropdowns
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsList, setNotificationsList] = useState(notifications);
+
+  // Refs for click outside handlers
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Count unread notifications
+  const unreadCount = notificationsList.filter((notif) => !notif.read).length;
+
+  // Mark notification as read
+  const markAsRead = (id: number) => {
+    setNotificationsList(
+      notificationsList.map((notification) =>
+        notification.id === id ? { ...notification, read: true } : notification
+      )
+    );
+  };
+
+  // Mark all as read
+  const markAllAsRead = () => {
+    setNotificationsList(
+      notificationsList.map((notification) => ({
+        ...notification,
+        read: true,
+      }))
+    );
+  };
+
+  // Handle click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target as Node)
+      ) {
+        setNotificationsOpen(false);
+      }
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   return (
     <div className="w-full bg-gray-50 min-h-screen">
       <header className="w-full bg-white shadow">
@@ -77,8 +157,13 @@ const EmployeeDashboard: React.FC = () => {
             My Dashboard
           </h1>
           <div className="flex items-center space-x-4">
-            <div className="relative">
-              <button className="p-1 text-gray-400 rounded-full hover:bg-gray-100 focus:outline-none">
+            {/* Notifications dropdown */}
+            <div className="relative" ref={notificationsRef}>
+              <button
+                className="p-1 text-gray-400 rounded-full hover:bg-gray-100 focus:outline-none transition-colors duration-200"
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                aria-label="Notifications"
+              >
                 <svg
                   className="h-6 w-6"
                   xmlns="http://www.w3.org/2000/svg"
@@ -93,30 +178,257 @@ const EmployeeDashboard: React.FC = () => {
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                   />
                 </svg>
-                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400"></span>
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
               </button>
+
+              {/* Notifications panel */}
+              {notificationsOpen && (
+                <div className="origin-top-right absolute right-0 mt-2 w-80 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10 transition ease-out duration-200 max-w-[calc(100vw-16px)] left-auto">
+                  <div className="py-2 px-4 border-b border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-medium text-gray-900">
+                        Notifications
+                      </h3>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          Mark all as read
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notificationsList.length === 0 ? (
+                      <div className="py-4 px-4 text-center text-sm text-gray-500">
+                        No notifications
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-200">
+                        {notificationsList.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors duration-150 ${
+                              notification.read ? "" : "bg-blue-50"
+                            }`}
+                            onClick={() => markAsRead(notification.id)}
+                          >
+                            <div className="flex items-start">
+                              <div className="flex-shrink-0 pt-0.5">
+                                {notification.type === "task" && (
+                                  <span className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="h-5 w-5 text-indigo-600"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                                {notification.type === "message" && (
+                                  <span className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="h-5 w-5 text-green-600"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                                {notification.type === "alert" && (
+                                  <span className="h-8 w-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="h-5 w-5 text-yellow-600"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="ml-3 flex-1">
+                                <p className="text-sm text-gray-900">
+                                  {notification.message}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {notification.time}
+                                </p>
+                              </div>
+                              {!notification.read && (
+                                <div className="flex-shrink-0 ml-2">
+                                  <span className="inline-block h-2 w-2 rounded-full bg-blue-500"></span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="py-2 px-4 border-t border-gray-200 text-center">
+                    <Link
+                      to="/employee/notifications"
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors duration-150"
+                    >
+                      View all notifications
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
-            <button className="flex items-center text-sm font-medium text-gray-700 focus:outline-none">
-              <img
-                className="h-8 w-8 rounded-full border-2 border-gray-200"
-                src={employeeData.avatar}
-                alt="Profile"
-              />
-              <span className="ml-2 hidden sm:inline">{employeeData.name}</span>
-              <svg
-                className="ml-1 h-5 w-5 text-gray-400"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
+
+            {/* Profile dropdown */}
+            <div className="relative" ref={profileRef}>
+              <button
+                className="flex items-center text-sm font-medium text-gray-700 hover:bg-gray-50 p-2 rounded-md transition-colors duration-200 focus:outline-none"
+                onClick={() => setProfileOpen(!profileOpen)}
+                aria-label="User menu"
               >
-                <path
-                  fillRule="evenodd"
-                  d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                  clipRule="evenodd"
+                <img
+                  className="h-8 w-8 rounded-full border-2 border-gray-200 object-cover"
+                  src={employeeData.avatar}
+                  alt="Profile"
                 />
-              </svg>
-            </button>
+                <span className="ml-2 hidden sm:inline">
+                  {employeeData.name}
+                </span>
+                <svg
+                  className={`ml-1 h-5 w-5 text-gray-400 transition-transform duration-200 ${
+                    profileOpen ? "transform rotate-180" : ""
+                  }`}
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              {/* Profile dropdown menu */}
+              {profileOpen && (
+                <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10 transition ease-out duration-200">
+                  <div className="py-3 px-4 border-b border-gray-200">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0">
+                        <img
+                          className="h-10 w-10 rounded-full object-cover"
+                          src={employeeData.avatar}
+                          alt={employeeData.name}
+                        />
+                      </div>
+                      <div className="ml-3">
+                        <div className="text-base font-medium text-gray-800">
+                          {employeeData.name}
+                        </div>
+                        <div className="text-sm font-medium text-gray-500">
+                          {employeeData.title}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="py-1" role="menu" aria-orientation="vertical">
+                    <Link
+                      to="/employee/profile"
+                      className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="mr-3 h-5 w-5 text-gray-400 group-hover:text-indigo-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                      Your Profile
+                    </Link>
+                    <Link
+                      to="/employee/timetracking"
+                      className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="mr-3 h-5 w-5 text-gray-400 group-hover:text-indigo-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Time Tracking
+                    </Link>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <Link
+                      to="/login"
+                      className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="mr-3 h-5 w-5 text-gray-400 group-hover:text-red-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                        />
+                      </svg>
+                      Sign out
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -172,12 +484,12 @@ const EmployeeDashboard: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-900">
                   My Current Projects
                 </h3>
-                <a
-                  href="#"
+                <Link
+                  to="/employee/projects"
                   className="text-indigo-600 text-sm font-medium hover:text-indigo-800"
                 >
                   View All
-                </a>
+                </Link>
               </div>
               <div className="p-4 sm:p-6">
                 {employeeData.currentProjects.map((project) => (
@@ -218,12 +530,12 @@ const EmployeeDashboard: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-900">
                   Upcoming Tasks
                 </h3>
-                <a
-                  href="#"
+                <Link
+                  to="/employee/tasks"
                   className="text-indigo-600 text-sm font-medium hover:text-indigo-800"
                 >
                   View All
-                </a>
+                </Link>
               </div>
               <div className="overflow-hidden">
                 <ul className="divide-y divide-gray-200">
@@ -290,7 +602,10 @@ const EmployeeDashboard: React.FC = () => {
                 </ul>
               </div>
               <div className="bg-gray-50 px-4 sm:px-6 py-4">
-                <button className="w-full flex justify-center items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+                <Link
+                  to="/employee/tasks?action=new"
+                  className="w-full flex justify-center items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                >
                   <svg
                     className="h-5 w-5 mr-1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -306,7 +621,7 @@ const EmployeeDashboard: React.FC = () => {
                     />
                   </svg>
                   Add New Task
-                </button>
+                </Link>
               </div>
             </div>
           </div>
@@ -418,12 +733,12 @@ const EmployeeDashboard: React.FC = () => {
                 </ul>
               </div>
               <div className="bg-gray-50 px-4 sm:px-6 py-4 text-center">
-                <a
-                  href="#"
+                <Link
+                  to="/employee/performance"
                   className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
                 >
                   View all activity
-                </a>
+                </Link>
               </div>
             </div>
           </div>

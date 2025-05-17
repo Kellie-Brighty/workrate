@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import Modal from "../../components/Modal";
 
 // Hook to detect screen size
 const useIsMobile = () => {
@@ -270,83 +270,102 @@ const getEffectiveStatus = (task: any) => {
 };
 
 const Tasks: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [projectFilter, setProjectFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
   const isMobile = useIsMobile();
 
-  // Extract unique values for filters
-  const statuses = ["Completed", "In Progress", "Not Started", "Overdue"];
-  const priorities = ["High", "Medium", "Low"];
-  const projects = [...new Set(tasksData.map((task) => task.project.title))];
-  const assignees = [...new Set(tasksData.map((task) => task.assignee.name))];
+  // Add state for tasks
+  const [tasks, setTasks] = useState(tasksData);
+
+  // Add new states for modals and filters
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
+  const [showEditTaskModal, setShowEditTaskModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
+
+  // Search/filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("dueDate");
+  const [currentPage, setCurrentPage] = useState(1);
+  const tasksPerPage = 10;
+
+  // Handle task click
+  const handleTaskClick = (task: any) => {
+    setSelectedTask(task);
+    setShowTaskDetailModal(true);
+  };
+
+  // Handle edit task button
+  const handleEditTask = (task: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTask(task);
+    setShowEditTaskModal(true);
+  };
+
+  // Handle status change
+  const handleStatusChange = (taskId: number, newStatus: string) => {
+    setTasks(
+      tasks.map((task) =>
+        task.id === taskId ? { ...task, status: newStatus } : task
+      )
+    );
+
+    // If task detail modal is open, update selected task
+    if (selectedTask && selectedTask.id === taskId) {
+      setSelectedTask({ ...selectedTask, status: newStatus });
+    }
+  };
 
   // Filter tasks based on search and filters
-  const filteredTasks = tasksData.filter((task) => {
-    // Apply effective status (including marking overdue tasks)
-    const effectiveStatus = getEffectiveStatus(task);
-
+  const filteredTasks = tasks.filter((task) => {
     // Search filter
     const matchesSearch =
       searchQuery === "" ||
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.tags.some((tag: string) =>
-        tag.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      task.description.toLowerCase().includes(searchQuery.toLowerCase());
 
     // Status filter
     const matchesStatus =
-      statusFilter === "" || effectiveStatus === statusFilter;
+      statusFilter === "all" ||
+      getEffectiveStatus(task).toLowerCase() === statusFilter.toLowerCase();
 
     // Priority filter
     const matchesPriority =
-      priorityFilter === "" || task.priority === priorityFilter;
+      priorityFilter === "all" ||
+      task.priority.toLowerCase() === priorityFilter.toLowerCase();
 
-    // Project filter
-    const matchesProject =
-      projectFilter === "" || task.project.title === projectFilter;
-
-    // Assignee filter
-    const matchesAssignee =
-      assigneeFilter === "" || task.assignee.name === assigneeFilter;
-
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesPriority &&
-      matchesProject &&
-      matchesAssignee
-    );
+    return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredTasks.length / itemsPerPage);
-  const paginatedTasks = filteredTasks.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Sort the filtered tasks
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    switch (sortBy) {
+      case "dueDate":
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      case "priority":
+        const priorityValue = { high: 3, medium: 2, low: 1 };
+        return (
+          priorityValue[
+            b.priority.toLowerCase() as keyof typeof priorityValue
+          ] -
+          priorityValue[a.priority.toLowerCase() as keyof typeof priorityValue]
+        );
+      case "status":
+        return getEffectiveStatus(a).localeCompare(getEffectiveStatus(b));
+      default:
+        return 0;
+    }
+  });
 
-  // Handle page change
+  // Pagination
+  const indexOfLastTask = currentPage * tasksPerPage;
+  const indexOfFirstTask = indexOfLastTask - tasksPerPage;
+  const currentTasks = sortedTasks.slice(indexOfFirstTask, indexOfLastTask);
+  const totalPages = Math.ceil(sortedTasks.length / tasksPerPage);
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
-
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    searchQuery,
-    statusFilter,
-    priorityFilter,
-    projectFilter,
-    assigneeFilter,
-  ]);
 
   return (
     <div className="bg-gray-50 min-h-screen pb-12">
@@ -355,10 +374,11 @@ const Tasks: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
           <button
             type="button"
+            onClick={() => setShowAddTaskModal(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             <svg
-              className="mr-2 h-5 w-5"
+              className="-ml-1 mr-2 h-5 w-5"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -413,12 +433,11 @@ const Tasks: React.FC = () => {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                 >
-                  <option value="">All Statuses</option>
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
+                  <option value="all">All Statuses</option>
+                  <option value="Completed">Completed</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Not Started">Not Started</option>
+                  <option value="Overdue">Overdue</option>
                 </select>
               </div>
 
@@ -436,58 +455,30 @@ const Tasks: React.FC = () => {
                   onChange={(e) => setPriorityFilter(e.target.value)}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                 >
-                  <option value="">All Priorities</option>
-                  {priorities.map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priority}
-                    </option>
-                  ))}
+                  <option value="all">All Priorities</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
                 </select>
               </div>
 
               <div>
                 <label
-                  htmlFor="project"
+                  htmlFor="sort"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Project
+                  Sort By
                 </label>
                 <select
-                  id="project"
-                  name="project"
-                  value={projectFilter}
-                  onChange={(e) => setProjectFilter(e.target.value)}
+                  id="sort"
+                  name="sort"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                 >
-                  <option value="">All Projects</option>
-                  {projects.map((project) => (
-                    <option key={project} value={project}>
-                      {project}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="assignee"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Assignee
-                </label>
-                <select
-                  id="assignee"
-                  name="assignee"
-                  value={assigneeFilter}
-                  onChange={(e) => setAssigneeFilter(e.target.value)}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                >
-                  <option value="">All Assignees</option>
-                  {assignees.map((assignee) => (
-                    <option key={assignee} value={assignee}>
-                      {assignee}
-                    </option>
-                  ))}
+                  <option value="dueDate">Due Date</option>
+                  <option value="priority">Priority</option>
+                  <option value="status">Status</option>
                 </select>
               </div>
             </div>
@@ -545,7 +536,7 @@ const Tasks: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedTasks.map((task) => {
+                {currentTasks.map((task) => {
                   const effectiveStatus = getEffectiveStatus(task);
                   return (
                     <tr key={task.id} className="hover:bg-gray-50">
@@ -656,13 +647,16 @@ const Tasks: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          to={`/employer/tasks/${task.id}`}
+                        <button
+                          onClick={() => handleTaskClick(task)}
                           className="text-indigo-600 hover:text-indigo-900 mr-3"
                         >
                           View
-                        </Link>
-                        <button className="text-indigo-600 hover:text-indigo-900 mr-3">
+                        </button>
+                        <button
+                          onClick={(e) => handleEditTask(task, e)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-3"
+                        >
                           Edit
                         </button>
                       </td>
@@ -682,14 +676,14 @@ const Tasks: React.FC = () => {
                     Showing{" "}
                     <span className="font-medium">
                       {Math.min(
-                        (currentPage - 1) * itemsPerPage + 1,
+                        (currentPage - 1) * tasksPerPage + 1,
                         filteredTasks.length
                       )}
                     </span>{" "}
                     to{" "}
                     <span className="font-medium">
                       {Math.min(
-                        currentPage * itemsPerPage,
+                        currentPage * tasksPerPage,
                         filteredTasks.length
                       )}
                     </span>{" "}
@@ -860,6 +854,449 @@ const Tasks: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Task Detail Modal */}
+      <Modal
+        isOpen={showTaskDetailModal}
+        onClose={() => setShowTaskDetailModal(false)}
+        title={selectedTask?.title || "Task Details"}
+        size="medium"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowTaskDetailModal(false)}
+            >
+              Close
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => {
+                // In a real app, this would save task changes
+                setShowTaskDetailModal(false);
+              }}
+            >
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        {selectedTask && (
+          <div className="py-4 space-y-4">
+            <div>
+              <label
+                htmlFor="task-detail-title"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Task Title
+              </label>
+              <input
+                type="text"
+                id="task-detail-title"
+                defaultValue={selectedTask.title}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="task-detail-description"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Description
+              </label>
+              <textarea
+                id="task-detail-description"
+                rows={3}
+                defaultValue={selectedTask.description}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="task-detail-assignee"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Assignee
+                </label>
+                <input
+                  type="text"
+                  id="task-detail-assignee"
+                  defaultValue={selectedTask.assignee.name}
+                  readOnly
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="task-detail-due-date"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  id="task-detail-due-date"
+                  defaultValue={selectedTask.dueDate}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="task-detail-priority"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Priority
+                </label>
+                <select
+                  id="task-detail-priority"
+                  defaultValue={selectedTask.priority}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                >
+                  <option>Low</option>
+                  <option>Medium</option>
+                  <option>High</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="task-detail-status"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Status
+                </label>
+                <select
+                  id="task-detail-status"
+                  defaultValue={selectedTask.status}
+                  onChange={(e) =>
+                    handleStatusChange(selectedTask.id, e.target.value)
+                  }
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                >
+                  <option>Not Started</option>
+                  <option>In Progress</option>
+                  <option>Completed</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="task-detail-project"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Project
+              </label>
+              <input
+                type="text"
+                id="task-detail-project"
+                defaultValue={selectedTask.project.title}
+                readOnly
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Created At
+              </label>
+              <div className="mt-1 text-sm text-gray-500">
+                {new Date(selectedTask.createdAt).toLocaleDateString()} at{" "}
+                {new Date(selectedTask.createdAt).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Task Modal */}
+      <Modal
+        isOpen={showEditTaskModal}
+        onClose={() => setShowEditTaskModal(false)}
+        title="Edit Task"
+        size="medium"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowEditTaskModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => {
+                // In a real app, would update the task
+                setShowEditTaskModal(false);
+              }}
+            >
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        {selectedTask && (
+          <div className="py-4 space-y-4">
+            <div>
+              <label
+                htmlFor="edit-task-title"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Task Title
+              </label>
+              <input
+                type="text"
+                id="edit-task-title"
+                defaultValue={selectedTask.title}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="edit-task-description"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Description
+              </label>
+              <textarea
+                id="edit-task-description"
+                rows={3}
+                defaultValue={selectedTask.description}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="edit-task-assignee"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Assignee
+                </label>
+                <select
+                  id="edit-task-assignee"
+                  defaultValue={selectedTask.assignee.name}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                >
+                  <option value="Jason Chen">Jason Chen</option>
+                  <option value="Sarah Johnson">Sarah Johnson</option>
+                  <option value="Michael Brown">Michael Brown</option>
+                  <option value="Emily Davis">Emily Davis</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-task-due-date"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  id="edit-task-due-date"
+                  defaultValue={selectedTask.dueDate}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="edit-task-priority"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Priority
+                </label>
+                <select
+                  id="edit-task-priority"
+                  defaultValue={selectedTask.priority}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                >
+                  <option>Low</option>
+                  <option>Medium</option>
+                  <option>High</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-task-status"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Status
+                </label>
+                <select
+                  id="edit-task-status"
+                  defaultValue={selectedTask.status}
+                  onChange={(e) =>
+                    handleStatusChange(selectedTask.id, e.target.value)
+                  }
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                >
+                  <option>Not Started</option>
+                  <option>In Progress</option>
+                  <option>Completed</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="edit-task-tags"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Tags
+              </label>
+              <input
+                type="text"
+                id="edit-task-tags"
+                defaultValue={selectedTask.tags.join(", ")}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                placeholder="Comma-separated tags"
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Add Task Modal */}
+      <Modal
+        isOpen={showAddTaskModal}
+        onClose={() => setShowAddTaskModal(false)}
+        title="Add New Task"
+        size="medium"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAddTaskModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => {
+                // In a real app, would add the task to the list
+                setShowAddTaskModal(false);
+              }}
+            >
+              Add Task
+            </button>
+          </>
+        }
+      >
+        <div className="py-4 space-y-4">
+          <div>
+            <label
+              htmlFor="new-task-title"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Task Title
+            </label>
+            <input
+              type="text"
+              id="new-task-title"
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="new-task-description"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Description
+            </label>
+            <textarea
+              id="new-task-description"
+              rows={3}
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="new-task-assignee"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Assignee
+              </label>
+              <select
+                id="new-task-assignee"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option value="">Select Assignee</option>
+                <option value="Jason Chen">Jason Chen</option>
+                <option value="Sarah Johnson">Sarah Johnson</option>
+                <option value="Michael Brown">Michael Brown</option>
+                <option value="Emily Davis">Emily Davis</option>
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="new-task-due-date"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Due Date
+              </label>
+              <input
+                type="date"
+                id="new-task-due-date"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="new-task-priority"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Priority
+              </label>
+              <select
+                id="new-task-priority"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="new-task-status"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Status
+              </label>
+              <select
+                id="new-task-status"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Not Started</option>
+                <option>In Progress</option>
+                <option>Completed</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="new-task-project"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Project
+            </label>
+            <select
+              id="new-task-project"
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            >
+              <option value="">Select Project</option>
+              <option value="1">Website Redesign</option>
+              <option value="2">Mobile App Development</option>
+              <option value="3">CRM Integration</option>
+              <option value="4">Marketing Campaign</option>
+            </select>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

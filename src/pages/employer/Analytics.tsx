@@ -15,6 +15,7 @@ import {
   PieController,
 } from "chart.js";
 import { Line, Bar, Doughnut, Pie } from "react-chartjs-2";
+import Modal from "../../components/Modal";
 
 // Register ChartJS components
 ChartJS.register(
@@ -165,24 +166,24 @@ const Analytics: React.FC = () => {
     timeTracking: "line",
   });
 
+  // Modal states
+  const [showExportPdfModal, setShowExportPdfModal] = useState(false);
+  const [showExportCsvModal, setShowExportCsvModal] = useState(false);
+
   // Mock function to handle export as PDF
   const handleExportPDF = () => {
     // In a real-world scenario, this would generate and download a PDF
-    alert(
-      "Exporting as PDF...\nIn a real implementation, this would use a library like jsPDF to generate a PDF report."
-    );
+    setShowExportPdfModal(true);
   };
 
   // Mock function to handle export as CSV
   const handleExportCSV = () => {
     // In a real-world scenario, this would generate and download a CSV
-    alert(
-      "Exporting as CSV...\nIn a real implementation, this would generate CSV data from the charts' datasets."
-    );
+    setShowExportCsvModal(true);
   };
 
   // Function to toggle chart types
-  const toggleChartType = (chart) => {
+  const toggleChartType = (chart: keyof typeof chartType) => {
     const types = {
       projectProgress: ["bar", "line"],
       taskCompletion: ["bar", "line"],
@@ -789,6 +790,86 @@ const Analytics: React.FC = () => {
           </button>
         </div>
       </main>
+
+      {/* Export PDF Modal */}
+      <Modal
+        isOpen={showExportPdfModal}
+        onClose={() => setShowExportPdfModal(false)}
+        title="Export as PDF"
+        size="small"
+        actions={
+          <button
+            onClick={() => setShowExportPdfModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            OK
+          </button>
+        }
+      >
+        <div className="py-4 flex flex-col items-center">
+          <div className="mb-4 p-3 bg-indigo-100 rounded-full">
+            <svg
+              className="h-6 w-6 text-indigo-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          </div>
+          <p className="text-gray-700 text-center">Exporting as PDF...</p>
+          <p className="text-gray-500 text-sm mt-2 text-center">
+            In a real implementation, this would use a library like jsPDF to
+            generate a PDF report.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Export CSV Modal */}
+      <Modal
+        isOpen={showExportCsvModal}
+        onClose={() => setShowExportCsvModal(false)}
+        title="Export as CSV"
+        size="small"
+        actions={
+          <button
+            onClick={() => setShowExportCsvModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            OK
+          </button>
+        }
+      >
+        <div className="py-4 flex flex-col items-center">
+          <div className="mb-4 p-3 bg-green-100 rounded-full">
+            <svg
+              className="h-6 w-6 text-green-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          </div>
+          <p className="text-gray-700 text-center">Exporting as CSV...</p>
+          <p className="text-gray-500 text-sm mt-2 text-center">
+            In a real implementation, this would generate CSV data from the
+            charts' datasets.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 };

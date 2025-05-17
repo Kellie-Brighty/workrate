@@ -181,7 +181,7 @@ const TimeApprovals: React.FC = () => {
           };
         }
         return entry;
-      })
+      }) as typeof timeEntries
     );
     setSelectedEntries([]); // Clear selection after approval
   };
@@ -207,7 +207,7 @@ const TimeApprovals: React.FC = () => {
             };
           }
           return entry;
-        })
+        }) as typeof timeEntries
       );
     }
     setShowRejectionModal(false);

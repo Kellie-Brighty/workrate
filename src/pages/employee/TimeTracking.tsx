@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Modal from "../../components/Modal";
 
 // Mock data for time entries
 const mockTimeEntries = [
@@ -150,12 +151,22 @@ const TimeTracking: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState("");
 
   // Manage the timer interval
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Modal states
+  const [showMissingSelectionModal, setShowMissingSelectionModal] =
+    useState(false);
+  const [showInvalidTimeModal, setShowInvalidTimeModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<number | null>(null);
 
   // Update available tasks when project changes
   useEffect(() => {
-    if (selectedProject && mockTasks[selectedProject]) {
-      setAvailableTasks(mockTasks[selectedProject]);
+    if (
+      selectedProject &&
+      mockTasks[selectedProject as keyof typeof mockTasks]
+    ) {
+      setAvailableTasks(mockTasks[selectedProject as keyof typeof mockTasks]);
       setSelectedTask(null); // Reset task selection
     } else {
       setAvailableTasks([]);
@@ -187,7 +198,7 @@ const TimeTracking: React.FC = () => {
   // Handle start/pause/stop timer
   const handleStartTimer = () => {
     if (!selectedProject || !selectedTask) {
-      alert("Please select a project and task first");
+      setShowMissingSelectionModal(true);
       return;
     }
     setIsRunning(true);
@@ -236,7 +247,49 @@ const TimeTracking: React.FC = () => {
   // Handle manual time entry
   const handleManualEntry = (e: React.FormEvent) => {
     e.preventDefault();
-    // Logic for manual time entry form submission would go here
+
+    // Get form data
+    const formData = new FormData(e.target as HTMLFormElement);
+    const projectId = parseInt(formData.get("project") as string);
+    const taskId = parseInt(formData.get("task") as string);
+    const date = formData.get("date") as string;
+    const startTime = formData.get("startTime") as string;
+    const endTime = formData.get("endTime") as string;
+    const notes = formData.get("notes") as string;
+
+    // Calculate duration
+    const startSeconds = timeToSeconds(startTime);
+    const endSeconds = timeToSeconds(endTime);
+    const duration = endSeconds - startSeconds;
+
+    if (duration <= 0) {
+      setShowInvalidTimeModal(true);
+      return;
+    }
+
+    // Create the new time entry
+    const newEntry = {
+      id: timeEntries.length + 1,
+      projectId,
+      projectName: mockProjects.find((p) => p.id === projectId)?.name || "",
+      taskId,
+      taskName:
+        mockTasks[projectId as keyof typeof mockTasks]?.find(
+          (t: { id: number; name: string }) => t.id === taskId
+        )?.name || "",
+      date,
+      startTime,
+      endTime,
+      duration,
+      notes,
+      status: "pending",
+    };
+
+    // Add to time entries
+    setTimeEntries([newEntry, ...timeEntries]);
+
+    // Reset form
+    (e.target as HTMLFormElement).reset();
   };
 
   // Filter time entries based on selected filters
@@ -249,6 +302,70 @@ const TimeTracking: React.FC = () => {
 
     return matchesDate && matchesProject && matchesStatus;
   });
+
+  // Update the entry status change handler
+  // const handleEntryStatusChange = (entryId: number, newStatus: string) => {
+  //   setTimeEntries(
+  //     timeEntries.map((entry) =>
+  //       entry.id === entryId ? { ...entry, status: newStatus } : entry
+  //     )
+  //   );
+  // };
+
+  // Update the entry deletion handler
+  const handleDeleteEntry = (entryId: number) => {
+    setEntryToDelete(entryId);
+    setShowDeleteConfirmModal(true);
+  };
+
+  // Confirm delete entry
+  const confirmDeleteEntry = () => {
+    if (entryToDelete) {
+      setTimeEntries(timeEntries.filter((entry) => entry.id !== entryToDelete));
+      setShowDeleteConfirmModal(false);
+      setEntryToDelete(null);
+    }
+  };
+
+  // Update the entry edit handler
+  const handleEditEntry = (entryId: number) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    // Set form values for editing
+    setSelectedProject(entry.projectId);
+    // This will trigger the useEffect to load available tasks
+
+    // Use setTimeout to ensure tasks are loaded before setting selectedTask
+    setTimeout(() => {
+      setSelectedTask(entry.taskId);
+      setNotes(entry.notes);
+
+      // Set date in the date input
+      const dateInput = document.getElementById(
+        "manualDate"
+      ) as HTMLInputElement;
+      if (dateInput) dateInput.value = entry.date;
+
+      // Set times in the time inputs
+      const startInput = document.getElementById(
+        "manualStartTime"
+      ) as HTMLInputElement;
+      if (startInput) startInput.value = entry.startTime;
+
+      const endInput = document.getElementById(
+        "manualEndTime"
+      ) as HTMLInputElement;
+      if (endInput) endInput.value = entry.endTime;
+
+      // Delete the old entry
+      setTimeEntries(timeEntries.filter((e) => e.id !== entryId));
+
+      // Scroll to the manual entry form
+      const manualForm = document.getElementById("manualEntryForm");
+      if (manualForm) manualForm.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  };
 
   return (
     <div className="w-full bg-gray-50 min-h-screen pb-12">
@@ -683,10 +800,16 @@ const TimeTracking: React.FC = () => {
                               )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button className="text-indigo-600 hover:text-indigo-900 mr-3">
+                            <button
+                              onClick={() => handleEditEntry(entry.id)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-3"
+                            >
                               Edit
                             </button>
-                            <button className="text-red-600 hover:text-red-900">
+                            <button
+                              onClick={() => handleDeleteEntry(entry.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
                               Delete
                             </button>
                           </td>
@@ -710,6 +833,73 @@ const TimeTracking: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* Missing Selection Modal */}
+      <Modal
+        isOpen={showMissingSelectionModal}
+        onClose={() => setShowMissingSelectionModal(false)}
+        title="Missing Information"
+        size="small"
+        actions={
+          <button
+            onClick={() => setShowMissingSelectionModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            OK
+          </button>
+        }
+      >
+        <p className="text-gray-700">Please select a project and task first.</p>
+      </Modal>
+
+      {/* Invalid Time Modal */}
+      <Modal
+        isOpen={showInvalidTimeModal}
+        onClose={() => setShowInvalidTimeModal(false)}
+        title="Invalid Time Entry"
+        size="small"
+        actions={
+          <button
+            onClick={() => setShowInvalidTimeModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            OK
+          </button>
+        }
+      >
+        <p className="text-gray-700">End time must be after start time.</p>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirmModal}
+        onClose={() => setShowDeleteConfirmModal(false)}
+        title="Confirm Deletion"
+        size="small"
+        actions={
+          <>
+            <button
+              onClick={() => setShowDeleteConfirmModal(false)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDeleteEntry}
+              className="px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <p className="text-gray-700">
+          Are you sure you want to delete this time entry?
+        </p>
+        <p className="text-gray-500 text-sm mt-2">
+          This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 };

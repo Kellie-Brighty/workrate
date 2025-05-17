@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
+import Modal from "../../components/Modal";
 
 // Mock project data
 const projectData = {
@@ -195,10 +196,21 @@ const getPriorityColor = (priority: string) => {
 };
 
 const ProjectDetail: React.FC = () => {
-  const { projectId } = useParams<{ projectId: string }>();
   const [activeTab, setActiveTab] = useState<
     "overview" | "tasks" | "team" | "activity"
   >("overview");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [showMemberDetailModal, setShowMemberDetailModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any | null>(null);
+  const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
+
+  // Handle view team member
+  const handleViewMember = (member: any) => {
+    setSelectedMember(member);
+    setShowMemberDetailModal(true);
+  };
 
   // In a real app, we would fetch the project data based on the projectId
   // For this demo, we'll use the mock data
@@ -248,6 +260,7 @@ const ProjectDetail: React.FC = () => {
               <button
                 type="button"
                 className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => setShowEditModal(true)}
               >
                 Edit Project
               </button>
@@ -557,20 +570,38 @@ const ProjectDetail: React.FC = () => {
                     View All
                   </button>
                 </div>
-                <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
+                <div className="border-t border-gray-200">
                   <ul className="divide-y divide-gray-200">
                     {projectData.teamMembers.map((member) => (
-                      <li key={member.id} className="py-3 flex items-center">
-                        <img
-                          className="h-10 w-10 rounded-full"
-                          src={member.avatar}
-                          alt={member.name}
-                        />
-                        <div className="ml-3">
-                          <p className="text-sm font-medium text-gray-900">
-                            {member.name}
-                          </p>
-                          <p className="text-sm text-gray-500">{member.role}</p>
+                      <li
+                        key={member.id}
+                        className="px-4 py-4 sm:px-6 hover:bg-gray-50"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="flex-shrink-0">
+                            <img
+                              className="h-12 w-12 rounded-full"
+                              src={member.avatar}
+                              alt={member.name}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {member.name}
+                            </p>
+                            <p className="text-sm text-gray-500 truncate">
+                              {member.role}
+                            </p>
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                              onClick={() => handleViewMember(member)}
+                            >
+                              View
+                            </button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -591,6 +622,7 @@ const ProjectDetail: React.FC = () => {
               <button
                 type="button"
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => setShowAddTaskModal(true)}
               >
                 Add Task
               </button>
@@ -687,6 +719,7 @@ const ProjectDetail: React.FC = () => {
               <button
                 type="button"
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => setShowAddMemberModal(true)}
               >
                 Add Members
               </button>
@@ -718,6 +751,7 @@ const ProjectDetail: React.FC = () => {
                         <button
                           type="button"
                           className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          onClick={() => handleViewMember(member)}
                         >
                           View
                         </button>
@@ -801,6 +835,550 @@ const ProjectDetail: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Edit Project Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Project"
+        size="large"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowEditModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowEditModal(false)}
+            >
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        <div className="py-4 space-y-4">
+          <div>
+            <label
+              htmlFor="project-title"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Project Title
+            </label>
+            <input
+              type="text"
+              id="project-title"
+              defaultValue={projectData.title}
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Description
+            </label>
+            <textarea
+              id="description"
+              rows={3}
+              defaultValue={projectData.description}
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="start-date"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Start Date
+              </label>
+              <input
+                type="date"
+                id="start-date"
+                defaultValue={projectData.startDate}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="end-date"
+                className="block text-sm font-medium text-gray-700"
+              >
+                End Date
+              </label>
+              <input
+                type="date"
+                id="end-date"
+                defaultValue={projectData.endDate}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="status"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Status
+              </label>
+              <select
+                id="status"
+                defaultValue={projectData.status}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Not Started</option>
+                <option>Just Started</option>
+                <option>In Progress</option>
+                <option>Almost Complete</option>
+                <option>Completed</option>
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="priority"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Priority
+              </label>
+              <select
+                id="priority"
+                defaultValue={projectData.priority}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="budget"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Budget
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
+              </div>
+              <input
+                type="text"
+                id="budget"
+                defaultValue={projectData.budget}
+                className="mt-1 pl-7 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              className="text-red-600 hover:text-red-900 text-sm font-medium"
+              onClick={() => {
+                setShowEditModal(false);
+                setShowDeleteProjectModal(true);
+              }}
+            >
+              Delete Project
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Project Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteProjectModal}
+        onClose={() => setShowDeleteProjectModal(false)}
+        title="Delete Project"
+        size="small"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowDeleteProjectModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              onClick={() => {
+                setShowDeleteProjectModal(false);
+                // In a real app, we would delete the project and navigate
+                window.location.href = "/employer/projects";
+              }}
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <div className="py-4">
+          <p className="text-sm text-gray-500">
+            Are you sure you want to delete this project? This action cannot be
+            undone and all associated data will be permanently removed.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Add Task Modal - would be added when the "Add Task" button is clicked */}
+      <Modal
+        isOpen={showAddTaskModal}
+        onClose={() => setShowAddTaskModal(false)}
+        title="Add New Task"
+        size="medium"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAddTaskModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAddTaskModal(false)}
+            >
+              Add Task
+            </button>
+          </>
+        }
+      >
+        <div className="py-4 space-y-4">
+          <div>
+            <label
+              htmlFor="task-title"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Task Title
+            </label>
+            <input
+              type="text"
+              id="task-title"
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="task-description"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Description
+            </label>
+            <textarea
+              id="task-description"
+              rows={3}
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="task-assignee"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Assignee
+              </label>
+              <select
+                id="task-assignee"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                {projectData.teamMembers.map((member) => (
+                  <option key={member.id} value={member.name}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="task-due-date"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Due Date
+              </label>
+              <input
+                type="date"
+                id="task-due-date"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="task-priority"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Priority
+              </label>
+              <select
+                id="task-priority"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="task-status"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Status
+              </label>
+              <select
+                id="task-status"
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option>Not Started</option>
+                <option>In Progress</option>
+                <option>Completed</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add Team Member Modal */}
+      <Modal
+        isOpen={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        title="Add Team Members"
+        size="medium"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAddMemberModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAddMemberModal(false)}
+            >
+              Add Members
+            </button>
+          </>
+        }
+      >
+        <div className="py-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Select Employees
+            </label>
+            <div className="mt-2 space-y-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md p-2">
+              {/* Employee selection list */}
+              {[
+                {
+                  id: 5,
+                  name: "Alex Thompson",
+                  role: "DevOps Engineer",
+                  avatar: "https://randomuser.me/api/portraits/men/32.jpg",
+                },
+                {
+                  id: 6,
+                  name: "Jessica Williams",
+                  role: "UI Designer",
+                  avatar: "https://randomuser.me/api/portraits/women/25.jpg",
+                },
+                {
+                  id: 7,
+                  name: "Robert Lewis",
+                  role: "QA Engineer",
+                  avatar: "https://randomuser.me/api/portraits/men/67.jpg",
+                },
+              ].map((emp) => (
+                <div
+                  key={emp.id}
+                  className="flex items-center p-2 hover:bg-gray-50 rounded"
+                >
+                  <input
+                    id={`employee-${emp.id}`}
+                    name={`employee-${emp.id}`}
+                    type="checkbox"
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <label
+                    htmlFor={`employee-${emp.id}`}
+                    className="ml-3 flex items-center cursor-pointer"
+                  >
+                    <img
+                      src={emp.avatar}
+                      alt={emp.name}
+                      className="h-8 w-8 rounded-full mr-2"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {emp.name}
+                      </p>
+                      <p className="text-xs text-gray-500">{emp.role}</p>
+                    </div>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="member-role"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Role in Project
+            </label>
+            <select
+              id="member-role"
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+            >
+              <option value="Developer">Developer</option>
+              <option value="Designer">Designer</option>
+              <option value="Project Manager">Project Manager</option>
+              <option value="QA Tester">QA Tester</option>
+              <option value="DevOps">DevOps</option>
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="member-notes"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Additional Notes
+            </label>
+            <textarea
+              id="member-notes"
+              rows={3}
+              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              placeholder="Responsibilities, availability, etc."
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Team Member Detail Modal */}
+      <Modal
+        isOpen={showMemberDetailModal}
+        onClose={() => setShowMemberDetailModal(false)}
+        title="Team Member Details"
+        size="medium"
+        actions={
+          <button
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            onClick={() => setShowMemberDetailModal(false)}
+          >
+            Close
+          </button>
+        }
+      >
+        {selectedMember && (
+          <div className="py-4">
+            <div className="flex items-center mb-6">
+              <img
+                src={selectedMember.avatar}
+                alt={selectedMember.name}
+                className="h-16 w-16 rounded-full mr-4"
+              />
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">
+                  {selectedMember.name}
+                </h3>
+                <p className="text-sm text-gray-500">{selectedMember.role}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-medium text-gray-700">
+                  Assigned Tasks
+                </h4>
+                <div className="mt-1 bg-gray-50 rounded-md p-3">
+                  <ul className="space-y-2">
+                    {projectData.tasks
+                      .filter((task) => task.assignee === selectedMember.name)
+                      .map((task) => (
+                        <li key={task.id} className="flex items-center">
+                          <span
+                            className={`h-2 w-2 rounded-full mr-2 ${
+                              task.status === "Completed"
+                                ? "bg-green-500"
+                                : task.status === "In Progress"
+                                ? "bg-blue-500"
+                                : "bg-gray-300"
+                            }`}
+                          ></span>
+                          <span className="text-sm">{task.title}</span>
+                          <span
+                            className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                              task.status
+                            )}`}
+                          >
+                            {task.status}
+                          </span>
+                        </li>
+                      ))}
+                    {!projectData.tasks.some(
+                      (task) => task.assignee === selectedMember.name
+                    ) && (
+                      <li className="text-sm text-gray-500">
+                        No tasks assigned
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-700">Skills</h4>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {["JavaScript", "React", "TypeScript", "UI Design"].map(
+                    (skill) => (
+                      <span
+                        key={skill}
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-800"
+                      >
+                        {skill}
+                      </span>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-700">
+                  Contact Information
+                </h4>
+                <div className="mt-1 text-sm text-gray-500">
+                  <p>
+                    Email: {selectedMember.name.toLowerCase().replace(" ", ".")}
+                    @company.com
+                  </p>
+                  <p>Phone: +1 (555) 123-4567</p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 flex justify-between">
+                <button
+                  type="button"
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Reassign Tasks
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Remove from Project
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

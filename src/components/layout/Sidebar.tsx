@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import Modal from "../../components/Modal";
 
 interface SidebarProps {
   userType: "employer" | "employee";
@@ -13,13 +14,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const [expanded, setExpanded] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Auto-collapse sidebar on small screens
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
-        setExpanded(false);
+        // Don't collapse on mobile if it's manually opened
+        if (!isOpen) {
+          setExpanded(false);
+        }
       } else {
         setExpanded(true);
       }
@@ -30,12 +36,29 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [isOpen]);
+
+  // When sidebar is opened on mobile, show the expanded view
+  useEffect(() => {
+    if (isOpen && window.innerWidth < 768) {
+      setExpanded(true);
+    }
+  }, [isOpen]);
 
   const handleLinkClick = () => {
     if (window.innerWidth < 768 && onCloseMobile) {
       onCloseMobile();
     }
+  };
+
+  const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
+    // In a real app, this would clear auth tokens, user session, etc.
+    setShowLogoutModal(false);
+    navigate("/login"); // Redirect to login page
   };
 
   const employerMenuItems = [
@@ -458,12 +481,64 @@ const Sidebar: React.FC<SidebarProps> = ({
             </svg>
           </div>
           {expanded && (
-            <button onClick={handleLinkClick} className="ml-3 font-medium">
+            <button
+              onClick={handleLogout}
+              className="ml-3 font-medium bg-transparent"
+            >
               Logout
             </button>
           )}
         </div>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Confirm Logout"
+        size="small"
+        actions={
+          <>
+            <button
+              onClick={() => setShowLogoutModal(false)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmLogout}
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Logout
+            </button>
+          </>
+        }
+      >
+        <div className="py-3 flex flex-col items-center">
+          <div className="mb-4 p-3 bg-red-100 rounded-full">
+            <svg
+              className="h-6 w-6 text-red-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+          </div>
+          <p className="text-gray-700 text-center">
+            Are you sure you want to logout?
+          </p>
+          <p className="text-gray-500 text-sm mt-2 text-center">
+            Any unsaved changes will be lost.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 };

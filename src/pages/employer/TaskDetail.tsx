@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 
 // Mock task data (we'll use the same structure as in the Tasks.tsx file)
 const taskData = {
@@ -151,7 +151,6 @@ const getPriorityColor = (priority: string) => {
 };
 
 const TaskDetail: React.FC = () => {
-  const { taskId } = useParams<{ taskId: string }>();
   const [activeTab, setActiveTab] = useState<
     "details" | "comments" | "attachments" | "activity"
   >("details");
