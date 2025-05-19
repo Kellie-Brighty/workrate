@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useErrorNotification,
+  useSuccessNotification,
+} from "../../contexts/NotificationContext";
 
 // Mock data
 const employeeData = {
@@ -104,6 +109,9 @@ const EmployeeDashboard: React.FC = () => {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  const showError = useErrorNotification();
+  const showSuccess = useSuccessNotification();
+
   // Count unread notifications
   const unreadCount = notificationsList.filter((notif) => !notif.read).length;
 
@@ -148,6 +156,9 @@ const EmployeeDashboard: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="w-full bg-gray-50 min-h-screen">
@@ -404,9 +415,24 @@ const EmployeeDashboard: React.FC = () => {
                       Time Tracking
                     </Link>
                     <div className="border-t border-gray-100 my-1"></div>
-                    <Link
-                      to="/login"
-                      className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700"
+                    <button
+                      onClick={async () => {
+                        try {
+                          await logout();
+                          showSuccess(
+                            "Logout Successful",
+                            "You have been logged out successfully"
+                          );
+                          navigate("/login");
+                        } catch (error) {
+                          console.error("Logout failed:", error);
+                          showError(
+                            "Logout Failed",
+                            "There was a problem logging you out"
+                          );
+                        }
+                      }}
+                      className="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700"
                       role="menuitem"
                     >
                       <svg
@@ -424,7 +450,7 @@ const EmployeeDashboard: React.FC = () => {
                         />
                       </svg>
                       Sign out
-                    </Link>
+                    </button>
                   </div>
                 </div>
               )}

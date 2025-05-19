@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useSuccessNotification,
+  useErrorNotification,
+} from "../../contexts/NotificationContext";
 
 interface SidebarProps {
   userType: "employer" | "employee";
@@ -17,6 +22,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const showSuccess = useSuccessNotification();
+  const showError = useErrorNotification();
 
   // Auto-collapse sidebar on small screens
   useEffect(() => {
@@ -55,10 +63,17 @@ const Sidebar: React.FC<SidebarProps> = ({
     setShowLogoutModal(true);
   };
 
-  const confirmLogout = () => {
-    // In a real app, this would clear auth tokens, user session, etc.
-    setShowLogoutModal(false);
-    navigate("/login"); // Redirect to login page
+  const confirmLogout = async () => {
+    try {
+      await logout(); // Use the actual logout function from AuthContext
+      showSuccess("Logout Successful", "You have been logged out successfully");
+      setShowLogoutModal(false);
+      navigate("/login"); // Redirect to login page after successful logout
+    } catch (error) {
+      console.error("Logout failed:", error);
+      showError("Logout Failed", "There was a problem logging you out");
+      setShowLogoutModal(false);
+    }
   };
 
   const employerMenuItems = [

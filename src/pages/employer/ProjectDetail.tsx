@@ -1,171 +1,32 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal";
-
-// Mock project data
-const projectData = {
-  id: 1,
-  title: "Website Redesign",
-  description:
-    "Redesign the company website with a modern look and improved user experience. The new design should be mobile-friendly and follow the latest web design trends while maintaining our brand identity.",
-  startDate: "2023-10-15",
-  endDate: "2023-12-31",
-  progress: 65,
-  status: "In Progress",
-  priority: "High",
-  category: "Design",
-  budget: 25000,
-  teamMembers: [
-    {
-      id: 1,
-      name: "Jason Chen",
-      role: "UI/UX Designer",
-      avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-    },
-    {
-      id: 2,
-      name: "Sarah Johnson",
-      role: "Frontend Developer",
-      avatar: "https://randomuser.me/api/portraits/women/43.jpg",
-    },
-    {
-      id: 3,
-      name: "Michael Brown",
-      role: "Backend Developer",
-      avatar: "https://randomuser.me/api/portraits/men/44.jpg",
-    },
-    {
-      id: 4,
-      name: "Emily Davis",
-      role: "Project Manager",
-      avatar: "https://randomuser.me/api/portraits/women/45.jpg",
-    },
-  ],
-  tasks: [
-    {
-      id: 1,
-      title: "Research competitors",
-      status: "Completed",
-      assignee: "Jason Chen",
-      dueDate: "2023-10-25",
-      priority: "Medium",
-    },
-    {
-      id: 2,
-      title: "Create wireframes",
-      status: "Completed",
-      assignee: "Jason Chen",
-      dueDate: "2023-11-05",
-      priority: "High",
-    },
-    {
-      id: 3,
-      title: "Design homepage",
-      status: "In Progress",
-      assignee: "Jason Chen",
-      dueDate: "2023-11-15",
-      priority: "High",
-    },
-    {
-      id: 4,
-      title: "Implement responsive layout",
-      status: "Not Started",
-      assignee: "Sarah Johnson",
-      dueDate: "2023-11-25",
-      priority: "High",
-    },
-    {
-      id: 5,
-      title: "Create backend API",
-      status: "In Progress",
-      assignee: "Michael Brown",
-      dueDate: "2023-11-20",
-      priority: "Medium",
-    },
-    {
-      id: 6,
-      title: "User testing",
-      status: "Not Started",
-      assignee: "Emily Davis",
-      dueDate: "2023-12-10",
-      priority: "Medium",
-    },
-    {
-      id: 7,
-      title: "Performance optimization",
-      status: "Not Started",
-      assignee: "Sarah Johnson",
-      dueDate: "2023-12-20",
-      priority: "Low",
-    },
-    {
-      id: 8,
-      title: "Content migration",
-      status: "Not Started",
-      assignee: "Michael Brown",
-      dueDate: "2023-12-25",
-      priority: "Medium",
-    },
-  ],
-  milestones: [
-    {
-      id: 1,
-      title: "Research & Planning Phase",
-      dueDate: "2023-10-30",
-      status: "Completed",
-    },
-    {
-      id: 2,
-      title: "Design Phase",
-      dueDate: "2023-11-15",
-      status: "In Progress",
-    },
-    {
-      id: 3,
-      title: "Development Phase",
-      dueDate: "2023-12-15",
-      status: "Not Started",
-    },
-    {
-      id: 4,
-      title: "Testing & Launch",
-      dueDate: "2023-12-31",
-      status: "Not Started",
-    },
-  ],
-  activity: [
-    {
-      id: 1,
-      user: "Emily Davis",
-      action: "updated the project status",
-      timestamp: "2023-11-10T14:32:00Z",
-    },
-    {
-      id: 2,
-      user: "Jason Chen",
-      action: "completed task 'Create wireframes'",
-      timestamp: "2023-11-05T11:15:00Z",
-    },
-    {
-      id: 3,
-      user: "Sarah Johnson",
-      action: "was assigned to task 'Implement responsive layout'",
-      timestamp: "2023-11-01T09:45:00Z",
-    },
-    {
-      id: 4,
-      user: "Michael Brown",
-      action: "started working on 'Create backend API'",
-      timestamp: "2023-10-28T16:20:00Z",
-    },
-    {
-      id: 5,
-      user: "Emily Davis",
-      action: "created the project",
-      timestamp: "2023-10-15T10:00:00Z",
-    },
-  ],
-};
+import RemoveMemberModal from "../../components/RemoveMemberModal";
+import {
+  getProject,
+  deleteProject,
+  getEmployee,
+  getEmployees,
+  updateProject,
+  createTask,
+  getTasks,
+  getProjectActivities,
+  createActivity,
+  type ActivityData,
+  getUserData,
+  updateEmployee,
+} from "../../services/firebase";
+import type { TaskData } from "../../services/firebase";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useSuccessNotification,
+  useErrorNotification,
+} from "../../contexts/NotificationContext";
+import {
+  generateWhatsAppLink,
+  generateProjectAddedMessage,
+  generateTaskAssignedMessage,
+} from "../../utils/whatsappUtils";
 
 // Status color mapping
 const getStatusColor = (status: string) => {
@@ -196,6 +57,22 @@ const getPriorityColor = (priority: string) => {
 };
 
 const ProjectDetail: React.FC = () => {
+  const { projectId } = useParams<{ projectId: string }>();
+  const { userData } = useAuth();
+  const navigate = useNavigate();
+  // Define a type for notification functions
+  type NotificationFunction = (
+    title: string,
+    message: string,
+    duration?: number
+  ) => void;
+  const showSuccess: NotificationFunction = useSuccessNotification();
+  const showError: NotificationFunction = useErrorNotification();
+
+  const [project, setProject] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "overview" | "tasks" | "team" | "activity"
   >("overview");
@@ -205,6 +82,162 @@ const ProjectDetail: React.FC = () => {
   const [showMemberDetailModal, setShowMemberDetailModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<any>(null);
+  const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
+  const [removingMember, setRemovingMember] = useState(false);
+
+  // New state variables
+  const [availableEmployees, setAvailableEmployees] = useState<any[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [projectTasks, setProjectTasks] = useState<any[]>([]);
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
+  const [taskFormData, setTaskFormData] = useState<Partial<TaskData>>({
+    title: "",
+    description: "",
+    assignedTo: "",
+    dueDate: "",
+    status: "Not Started",
+    priority: "Medium",
+  });
+
+  // Activity state
+  const [projectActivities, setProjectActivities] = useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+
+  // Add pagination state for activities
+  const [activitiesPage, setActivitiesPage] = useState(1);
+  const activitiesPerPage = 5; // Show 5 activities per page
+
+  // Get current activities for pagination
+  const indexOfLastActivity = activitiesPage * activitiesPerPage;
+  const indexOfFirstActivity = indexOfLastActivity - activitiesPerPage;
+  const currentActivities = projectActivities.slice(
+    indexOfFirstActivity,
+    indexOfLastActivity
+  );
+
+  // Change page
+  const handleActivityPageChange = (pageNumber: number) => {
+    setActivitiesPage(pageNumber);
+  };
+
+  // Fetch project data when component mounts
+  useEffect(() => {
+    const fetchProjectData = async () => {
+      if (!projectId) return;
+
+      try {
+        setLoading(true);
+        const fetchedProject = await getProject(projectId);
+        setProject(fetchedProject);
+      } catch (error) {
+        console.error("Error fetching project:", error);
+        showError("Error", "Failed to load project details");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjectData();
+  }, [projectId]);
+
+  // Fetch team members when project data is loaded
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      if (!project || !project.team || project.team.length === 0) {
+        setTeamMembers([]);
+        return;
+      }
+
+      try {
+        setLoadingTeam(true);
+        const memberPromises = project.team.map((memberId: string) =>
+          getEmployee(memberId)
+        );
+
+        const members = await Promise.all(memberPromises);
+        // Filter out any null results (members not found)
+        const validMembers = members.filter((member) => member !== null);
+
+        setTeamMembers(validMembers);
+      } catch (error) {
+        console.error("Error fetching team members:", error);
+        showError("Error", "Failed to load team member details");
+      } finally {
+        setLoadingTeam(false);
+      }
+    };
+
+    fetchTeamMembers();
+  }, [project]);
+
+  // Fetch project tasks
+  useEffect(() => {
+    const fetchTasks = async () => {
+      if (!projectId) return;
+
+      try {
+        setLoadingTasks(true);
+        const fetchedTasks = await getTasks(projectId);
+        setProjectTasks(fetchedTasks);
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+        showError("Error", "Failed to load project tasks");
+      } finally {
+        setLoadingTasks(false);
+      }
+    };
+
+    fetchTasks();
+  }, [projectId]);
+
+  // Fetch project activities
+  useEffect(() => {
+    const fetchActivities = async () => {
+      if (!projectId) return;
+
+      try {
+        setLoadingActivities(true);
+        const activities = await getProjectActivities(projectId);
+        setProjectActivities(activities);
+        console.log(`Loaded ${activities.length} activities`);
+      } catch (error) {
+        console.error("Error fetching activities:", error);
+        showError("Error", "Failed to load project activities");
+      } finally {
+        setLoadingActivities(false);
+      }
+    };
+
+    fetchActivities();
+  }, [projectId]);
+
+  // Fetch available employees for team member selection
+  const fetchAvailableEmployees = async () => {
+    if (!userData) return;
+
+    try {
+      setLoadingEmployees(true);
+      // Get all employees for this employer
+      const employees = await getEmployees(userData.id);
+
+      // Filter out employees who are already team members
+      const currentTeamIds = project?.team || [];
+      const filteredEmployees = employees.filter(
+        (emp) => !currentTeamIds.includes(emp.id)
+      );
+
+      setAvailableEmployees(filteredEmployees);
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      showError("Error", "Failed to load available employees");
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
 
   // Handle view team member
   const handleViewMember = (member: any) => {
@@ -212,8 +245,351 @@ const ProjectDetail: React.FC = () => {
     setShowMemberDetailModal(true);
   };
 
-  // In a real app, we would fetch the project data based on the projectId
-  // For this demo, we'll use the mock data
+  // Handle project deletion
+  const handleDeleteProject = async () => {
+    if (!projectId) return;
+
+    try {
+      await deleteProject(projectId);
+      await logProjectActivity("deleted the project");
+      showSuccess(
+        "Project Deleted",
+        "The project has been deleted successfully"
+      );
+      // Navigate back to projects page
+      navigate("/employer/projects");
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      showError("Error", "Failed to delete project");
+    }
+  };
+
+  // Handle opening the add team member modal
+  const handleOpenAddMemberModal = () => {
+    setSelectedEmployees([]);
+    fetchAvailableEmployees();
+    setShowAddMemberModal(true);
+  };
+
+  // Handle team member selection
+  const handleEmployeeSelection = (employeeId: string) => {
+    setSelectedEmployees((prev) => {
+      if (prev.includes(employeeId)) {
+        return prev.filter((id) => id !== employeeId);
+      } else {
+        return [...prev, employeeId];
+      }
+    });
+  };
+
+  // Handle adding team members to project
+  const handleAddTeamMembers = async () => {
+    if (!projectId || selectedEmployees.length === 0) return;
+
+    try {
+      setAddingTeamMember(true);
+
+      // Get current team members
+      const currentTeam = project.team || [];
+
+      // Create updated team array with new members
+      const updatedTeam = [...currentTeam, ...selectedEmployees];
+
+      // Update project with new team members
+      await updateProject(projectId, {
+        team: updatedTeam,
+      });
+
+      // Save WhatsApp numbers for employees
+      for (const employeeId of selectedEmployees) {
+        const employee = availableEmployees.find(
+          (emp) => emp.id === employeeId
+        );
+        if (employee && employee.whatsappNumber) {
+          await updateEmployee(employeeId, {
+            whatsappNumber: employee.whatsappNumber,
+          });
+        }
+      }
+
+      // Log activity
+      await logProjectActivity(
+        `added ${selectedEmployees.length} team member(s) to the project`
+      );
+
+      // Send WhatsApp notifications to new team members
+      const appUrl = window.location.origin;
+      for (const employeeId of selectedEmployees) {
+        const employee = availableEmployees.find(
+          (emp) => emp.id === employeeId
+        );
+        if (employee && employee.whatsappNumber) {
+          const message = generateProjectAddedMessage(project.name, appUrl);
+          const whatsappLink = generateWhatsAppLink(
+            employee.whatsappNumber,
+            message
+          );
+
+          // Create a hidden link and click it to open WhatsApp
+          const link = document.createElement("a");
+          link.href = whatsappLink;
+          link.target = "_blank";
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      }
+
+      // Refresh project data
+      const updatedProject = await getProject(projectId);
+      setProject(updatedProject);
+
+      showSuccess(
+        "Team Updated",
+        "New team members have been added to the project"
+      );
+      setShowAddMemberModal(false);
+    } catch (error) {
+      console.error("Error adding team members:", error);
+      showError("Error", "Failed to add team members to the project");
+    } finally {
+      setAddingTeamMember(false);
+    }
+  };
+
+  // Handle task form field changes
+  const handleTaskFormChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
+    const { name, value } = e.target;
+    setTaskFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // Handle adding a new task
+  const handleAddTask = async () => {
+    if (!projectId || !userData) return;
+
+    // Basic validation
+    if (
+      !taskFormData.title ||
+      !taskFormData.assignedTo ||
+      !taskFormData.dueDate
+    ) {
+      showError("Validation Error", "Please fill in all required fields");
+      return;
+    }
+
+    try {
+      setAddingTask(true);
+
+      const newTask: TaskData = {
+        title: taskFormData.title || "",
+        description: taskFormData.description || "",
+        projectId: projectId,
+        assignedTo: taskFormData.assignedTo || "",
+        status: (taskFormData.status as TaskData["status"]) || "Not Started",
+        priority: (taskFormData.priority as TaskData["priority"]) || "Medium",
+        dueDate: taskFormData.dueDate || new Date().toISOString().split("T")[0],
+        createdBy: userData.id,
+      };
+
+      await createTask(newTask);
+
+      // Find the assigned team member
+      const assignedMember = teamMembers.find(
+        (member) => member.id === taskFormData.assignedTo
+      );
+      const assigneeName = assignedMember
+        ? assignedMember.name
+        : "a team member";
+
+      // Save WhatsApp number if provided
+      if (assignedMember && assignedMember.whatsappNumber) {
+        await updateEmployee(assignedMember.id, {
+          whatsappNumber: assignedMember.whatsappNumber,
+        });
+      }
+
+      // Log activity
+      await logProjectActivity(
+        `assigned task "${taskFormData.title}" to ${assigneeName}`
+      );
+
+      // Send WhatsApp notification to the assigned team member
+      if (assignedMember && assignedMember.whatsappNumber) {
+        const appUrl = window.location.origin;
+        const message = generateTaskAssignedMessage(
+          taskFormData.title,
+          project.name,
+          new Date(taskFormData.dueDate).toLocaleDateString(),
+          appUrl
+        );
+        const whatsappLink = generateWhatsAppLink(
+          assignedMember.whatsappNumber,
+          message
+        );
+
+        // Create a hidden link and click it to open WhatsApp
+        const link = document.createElement("a");
+        link.href = whatsappLink;
+        link.target = "_blank";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      // Refresh tasks
+      const updatedTasks = await getTasks(projectId);
+      setProjectTasks(updatedTasks);
+
+      // Reset form
+      setTaskFormData({
+        title: "",
+        description: "",
+        assignedTo: "",
+        dueDate: "",
+        status: "Not Started",
+        priority: "Medium",
+      });
+
+      showSuccess("Task Created", "New task has been added to the project");
+      setShowAddTaskModal(false);
+    } catch (error) {
+      console.error("Error adding task:", error);
+      showError("Error", "Failed to add task to the project");
+    } finally {
+      setAddingTask(false);
+    }
+  };
+
+  // Helper function to create an activity
+  const logProjectActivity = async (action: string) => {
+    if (!projectId || !userData) return;
+
+    try {
+      // Get user data to ensure we have the fullName
+      const user = await getUserData(userData.id);
+
+      const activityData: ActivityData = {
+        projectId,
+        user: userData.id,
+        userName: (user as any)?.fullName || userData.fullName || "User",
+        action,
+      };
+
+      await createActivity(activityData);
+
+      // Refresh activities
+      const activities = await getProjectActivities(projectId);
+      setProjectActivities(activities);
+    } catch (error) {
+      console.error("Error logging activity:", error);
+    }
+  };
+
+  // Initiate removing a team member (shows confirmation modal)
+  const confirmRemoveTeamMember = (member: any) => {
+    setMemberToRemove(member);
+    setShowRemoveMemberModal(true);
+  };
+
+  // Handle removing a team member from project
+  const handleRemoveTeamMember = async (memberId: string) => {
+    if (!projectId) return;
+
+    try {
+      setRemovingMember(true);
+      // Get current team members
+      const currentTeam = project.team || [];
+
+      // Get the member's name for activity logging
+      const memberToRemove = teamMembers.find(
+        (member) => member.id === memberId
+      );
+      const memberName = memberToRemove ? memberToRemove.name : "team member";
+
+      // Create updated team array without the removed member
+      const updatedTeamArray = currentTeam.filter((id: any) => id !== memberId);
+
+      // Update project with new team members
+      await updateProject(projectId, {
+        team: updatedTeamArray,
+      });
+
+      // Log activity
+      await logProjectActivity(`removed ${memberName} from the project team`);
+
+      // Refresh project data
+      const updatedProject = await getProject(projectId);
+      setProject(updatedProject);
+
+      // Close member detail modal if open
+      if (selectedMember && selectedMember.id === memberId) {
+        setShowMemberDetailModal(false);
+      }
+
+      showSuccess(
+        "Team Updated",
+        `${memberName} has been removed from the project`
+      );
+    } catch (error) {
+      console.error("Error removing team member:", error);
+      showError("Error", "Failed to remove team member from the project");
+    } finally {
+      setRemovingMember(false);
+      setShowRemoveMemberModal(false);
+      setMemberToRemove(null);
+    }
+  };
+
+  // If still loading, show a loading spinner
+  if (loading) {
+    return (
+      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
+
+  // If project not found, show error message
+  if (!project) {
+    return (
+      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-medium text-gray-900">
+            Project not found
+          </h2>
+          <p className="mt-2 text-gray-600">
+            The project you're looking for doesn't exist or you don't have
+            access to it.
+          </p>
+          <Link
+            to="/employer/projects"
+            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Back to Projects
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Project data with defaults for missing properties
+  const projectWithDefaults = {
+    ...project,
+    tasks: projectTasks,
+    teamMembers: teamMembers,
+    milestones: project.milestones || [],
+    activity: projectActivities,
+    progress: project.progress || 0,
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen pb-12">
@@ -223,31 +599,31 @@ const ProjectDetail: React.FC = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center">
                 <h1 className="text-2xl font-bold text-gray-900 truncate">
-                  {projectData.title}
+                  {project.name}
                 </h1>
                 <span
                   className={`ml-3 inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium ${getStatusColor(
-                    projectData.status
+                    project.status
                   )}`}
                 >
-                  {projectData.status}
+                  {project.status}
                 </span>
               </div>
               <div className="mt-1 flex items-center text-sm text-gray-500">
                 <span className="truncate">
-                  {new Date(projectData.startDate).toLocaleDateString()} -{" "}
-                  {new Date(projectData.endDate).toLocaleDateString()}
+                  {new Date(project.startDate).toLocaleDateString()} -{" "}
+                  {new Date(project.endDate).toLocaleDateString()}
                 </span>
                 <span className="mx-2">•</span>
                 <span
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(
-                    projectData.priority
+                    project.priority
                   )}`}
                 >
-                  {projectData.priority} Priority
+                  {project.priority} Priority
                 </span>
                 <span className="mx-2">•</span>
-                <span>{projectData.category}</span>
+                <span>{project.category}</span>
               </div>
             </div>
             <div className="mt-4 flex md:mt-0 md:ml-4">
@@ -305,7 +681,7 @@ const ProjectDetail: React.FC = () => {
                   </h3>
                 </div>
                 <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                  <p className="text-gray-600">{projectData.description}</p>
+                  <p className="text-gray-600">{project.description}</p>
                 </div>
               </div>
 
@@ -322,89 +698,415 @@ const ProjectDetail: React.FC = () => {
                       Overall Completion
                     </span>
                     <span className="text-sm font-medium text-gray-700">
-                      {projectData.progress}%
+                      {projectWithDefaults.progress}%
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div
                       className={`h-3 rounded-full ${
-                        projectData.progress < 30
+                        projectWithDefaults.progress < 30
                           ? "bg-red-500"
-                          : projectData.progress < 70
+                          : projectWithDefaults.progress < 70
                           ? "bg-yellow-500"
                           : "bg-green-500"
                       }`}
-                      style={{ width: `${projectData.progress}%` }}
+                      style={{ width: `${projectWithDefaults.progress}%` }}
                     ></div>
                   </div>
 
                   {/* Milestones */}
-                  <div className="mt-8">
-                    <h4 className="text-base font-medium text-gray-700 mb-4">
-                      Milestones
-                    </h4>
-                    <div className="space-y-3">
-                      {projectData.milestones.map((milestone) => (
-                        <div key={milestone.id} className="flex items-center">
-                          <div
-                            className={`flex-shrink-0 h-5 w-5 rounded-full ${
-                              milestone.status === "Completed"
-                                ? "bg-green-500"
-                                : milestone.status === "In Progress"
-                                ? "bg-blue-500"
-                                : "bg-gray-300"
-                            }`}
-                          ></div>
-                          <div className="ml-4 flex-1">
-                            <div className="flex justify-between items-center">
-                              <div>
-                                <h5 className="text-sm font-medium text-gray-900">
-                                  {milestone.title}
-                                </h5>
-                                <p className="text-xs text-gray-500">
-                                  Due:{" "}
-                                  {new Date(
-                                    milestone.dueDate
-                                  ).toLocaleDateString()}
-                                </p>
+                  {projectWithDefaults.milestones.length > 0 && (
+                    <div className="mt-8">
+                      <h4 className="text-base font-medium text-gray-700 mb-4">
+                        Milestones
+                      </h4>
+                      <div className="space-y-3">
+                        {projectWithDefaults.milestones.map(
+                          (milestone: any) => (
+                            <div
+                              key={milestone.id}
+                              className="flex items-center"
+                            >
+                              <div
+                                className={`flex-shrink-0 h-5 w-5 rounded-full ${
+                                  milestone.status === "Completed"
+                                    ? "bg-green-500"
+                                    : milestone.status === "In Progress"
+                                    ? "bg-blue-500"
+                                    : "bg-gray-300"
+                                }`}
+                              ></div>
+                              <div className="ml-4 flex-1">
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <h5 className="text-sm font-medium text-gray-900">
+                                      {milestone.title}
+                                    </h5>
+                                    <p className="text-xs text-gray-500">
+                                      Due:{" "}
+                                      {new Date(
+                                        milestone.dueDate
+                                      ).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                      milestone.status
+                                    )}`}
+                                  >
+                                    {milestone.status}
+                                  </span>
+                                </div>
                               </div>
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                                  milestone.status
-                                )}`}
-                              >
-                                {milestone.status}
-                              </span>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Recent Tasks */}
+              {/* Recent Tasks - only show if there are tasks */}
+              {projectWithDefaults.tasks.length > 0 && (
+                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                  <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Recent Tasks
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab("tasks")}
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-900"
+                    >
+                      View All
+                    </button>
+                  </div>
+                  <div className="border-t border-gray-200">
+                    <ul className="divide-y divide-gray-200">
+                      {projectWithDefaults.tasks
+                        .slice(0, 4)
+                        .map((task: any) => (
+                          <li key={task.id} className="px-4 py-4 sm:px-6">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <div
+                                  className={`h-2.5 w-2.5 rounded-full mr-2 ${
+                                    task.status === "Completed"
+                                      ? "bg-green-500"
+                                      : task.status === "In Progress"
+                                      ? "bg-blue-500"
+                                      : "bg-gray-300"
+                                  }`}
+                                ></div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {task.title}
+                                </p>
+                              </div>
+                              <div className="ml-2 flex-shrink-0 flex">
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                    task.status
+                                  )}`}
+                                >
+                                  {task.status}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-2 sm:flex sm:justify-between">
+                              <div className="sm:flex">
+                                <p className="flex items-center text-sm text-gray-500">
+                                  <svg
+                                    className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  {task.assignee}
+                                </p>
+                              </div>
+                              <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
+                                <svg
+                                  className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                                {new Date(task.dueDate).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1">
+              {/* Project Info */}
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+                <div className="px-4 py-5 sm:px-6">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">
+                    Project Information
+                  </h3>
+                </div>
+                <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
+                  <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                    <div className="sm:col-span-1">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Budget
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        $
+                        {project.budget
+                          ? project.budget.toLocaleString()
+                          : "N/A"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Category
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {project.category}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Start Date
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {new Date(project.startDate).toLocaleDateString()}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <dt className="text-sm font-medium text-gray-500">
+                        End Date
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {new Date(project.endDate).toLocaleDateString()}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Tasks Status
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        <div className="flex space-x-4">
+                          <div>
+                            <span className="text-lg font-medium">
+                              {
+                                projectWithDefaults.tasks.filter(
+                                  (t: any) => t.status === "Completed"
+                                ).length
+                              }
+                            </span>
+                            <p className="text-xs text-gray-500">Completed</p>
+                          </div>
+                          <div>
+                            <span className="text-lg font-medium">
+                              {
+                                projectWithDefaults.tasks.filter(
+                                  (t: any) => t.status === "In Progress"
+                                ).length
+                              }
+                            </span>
+                            <p className="text-xs text-gray-500">In Progress</p>
+                          </div>
+                          <div>
+                            <span className="text-lg font-medium">
+                              {
+                                projectWithDefaults.tasks.filter(
+                                  (t: any) => t.status === "Not Started"
+                                ).length
+                              }
+                            </span>
+                            <p className="text-xs text-gray-500">Not Started</p>
+                          </div>
+                        </div>
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              {/* Team Members */}
               <div className="bg-white shadow overflow-hidden sm:rounded-lg">
                 <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
                   <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Recent Tasks
+                    Team
                   </h3>
                   <button
-                    onClick={() => setActiveTab("tasks")}
+                    onClick={() => setActiveTab("team")}
                     className="text-sm font-medium text-indigo-600 hover:text-indigo-900"
                   >
                     View All
                   </button>
                 </div>
                 <div className="border-t border-gray-200">
-                  <ul className="divide-y divide-gray-200">
-                    {projectData.tasks.slice(0, 4).map((task) => (
-                      <li key={task.id} className="px-4 py-4 sm:px-6">
+                  {loadingTeam ? (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+                    </div>
+                  ) : teamMembers.length === 0 ? (
+                    <div className="px-4 py-4 text-center text-sm text-gray-500">
+                      No team members assigned to this project yet.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-200">
+                      {projectWithDefaults.teamMembers.map((member: any) => (
+                        <li
+                          key={member.id}
+                          className="px-4 py-4 sm:px-6 hover:bg-gray-50"
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className="flex-shrink-0">
+                              <img
+                                className="h-12 w-12 rounded-full"
+                                src={member.avatar}
+                                alt={member.name}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {member.name}
+                              </p>
+                              <p className="text-sm text-gray-500 truncate">
+                                {member.position || member.role}
+                              </p>
+                              {member.email && (
+                                <p className="text-xs text-gray-500 truncate">
+                                  {member.email}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <button
+                                type="button"
+                                className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                onClick={() => handleViewMember(member)}
+                              >
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                className="ml-2 inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                onClick={() => confirmRemoveTeamMember(member)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tasks Tab */}
+        {activeTab === "tasks" && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">
+                Project Tasks
+              </h3>
+              <button
+                type="button"
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => setShowAddTaskModal(true)}
+              >
+                Add Task
+              </button>
+            </div>
+            <div className="border-t border-gray-200">
+              {loadingTasks ? (
+                <div className="flex justify-center py-16">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                </div>
+              ) : projectTasks.length === 0 ? (
+                <div className="px-4 py-16 text-center text-gray-500">
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">
+                    No tasks yet
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Get started by creating a new task for this project.
+                  </p>
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddTaskModal(true)}
+                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      <svg
+                        className="-ml-1 mr-2 h-5 w-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Create a Task
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {projectTasks.map((task) => {
+                    // Find team member name from the assignedTo id
+                    const assignedMember = teamMembers.find(
+                      (member) => member.id === task.assignedTo
+                    );
+                    const assigneeName = assignedMember
+                      ? assignedMember.name
+                      : "Unassigned";
+
+                    return (
+                      <li
+                        key={task.id}
+                        className="px-4 py-4 sm:px-6 hover:bg-gray-50"
+                      >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center">
                             <div
-                              className={`h-2.5 w-2.5 rounded-full mr-2 ${
+                              className={`h-3 w-3 rounded-full mr-3 ${
                                 task.status === "Completed"
                                   ? "bg-green-500"
                                   : task.status === "In Progress"
@@ -442,7 +1144,7 @@ const ProjectDetail: React.FC = () => {
                                   clipRule="evenodd"
                                 />
                               </svg>
-                              {task.assignee}
+                              {assigneeName}
                             </p>
                           </div>
                           <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
@@ -465,246 +1167,10 @@ const ProjectDetail: React.FC = () => {
                           </div>
                         </div>
                       </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="lg:col-span-1">
-              {/* Project Info */}
-              <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                <div className="px-4 py-5 sm:px-6">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Project Information
-                  </h3>
-                </div>
-                <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                  <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                    <div className="sm:col-span-1">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Budget
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        ${projectData.budget.toLocaleString()}
-                      </dd>
-                    </div>
-                    <div className="sm:col-span-1">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Category
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        {projectData.category}
-                      </dd>
-                    </div>
-                    <div className="sm:col-span-1">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Start Date
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        {new Date(projectData.startDate).toLocaleDateString()}
-                      </dd>
-                    </div>
-                    <div className="sm:col-span-1">
-                      <dt className="text-sm font-medium text-gray-500">
-                        End Date
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        {new Date(projectData.endDate).toLocaleDateString()}
-                      </dd>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Tasks Status
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        <div className="flex space-x-4">
-                          <div>
-                            <span className="text-lg font-medium">
-                              {
-                                projectData.tasks.filter(
-                                  (t) => t.status === "Completed"
-                                ).length
-                              }
-                            </span>
-                            <p className="text-xs text-gray-500">Completed</p>
-                          </div>
-                          <div>
-                            <span className="text-lg font-medium">
-                              {
-                                projectData.tasks.filter(
-                                  (t) => t.status === "In Progress"
-                                ).length
-                              }
-                            </span>
-                            <p className="text-xs text-gray-500">In Progress</p>
-                          </div>
-                          <div>
-                            <span className="text-lg font-medium">
-                              {
-                                projectData.tasks.filter(
-                                  (t) => t.status === "Not Started"
-                                ).length
-                              }
-                            </span>
-                            <p className="text-xs text-gray-500">Not Started</p>
-                          </div>
-                        </div>
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-
-              {/* Team Members */}
-              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Team
-                  </h3>
-                  <button
-                    onClick={() => setActiveTab("team")}
-                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900"
-                  >
-                    View All
-                  </button>
-                </div>
-                <div className="border-t border-gray-200">
-                  <ul className="divide-y divide-gray-200">
-                    {projectData.teamMembers.map((member) => (
-                      <li
-                        key={member.id}
-                        className="px-4 py-4 sm:px-6 hover:bg-gray-50"
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="flex-shrink-0">
-                            <img
-                              className="h-12 w-12 rounded-full"
-                              src={member.avatar}
-                              alt={member.name}
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {member.name}
-                            </p>
-                            <p className="text-sm text-gray-500 truncate">
-                              {member.role}
-                            </p>
-                          </div>
-                          <div>
-                            <button
-                              type="button"
-                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                              onClick={() => handleViewMember(member)}
-                            >
-                              View
-                            </button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tasks Tab */}
-        {activeTab === "tasks" && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
-                Project Tasks
-              </h3>
-              <button
-                type="button"
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowAddTaskModal(true)}
-              >
-                Add Task
-              </button>
-            </div>
-            <div className="border-t border-gray-200">
-              <ul className="divide-y divide-gray-200">
-                {projectData.tasks.map((task) => (
-                  <li
-                    key={task.id}
-                    className="px-4 py-4 sm:px-6 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div
-                          className={`h-3 w-3 rounded-full mr-3 ${
-                            task.status === "Completed"
-                              ? "bg-green-500"
-                              : task.status === "In Progress"
-                              ? "bg-blue-500"
-                              : "bg-gray-300"
-                          }`}
-                        ></div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {task.title}
-                        </p>
-                        <span
-                          className={`ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(
-                            task.priority
-                          )}`}
-                        >
-                          {task.priority}
-                        </span>
-                      </div>
-                      <div className="ml-2 flex-shrink-0 flex">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                            task.status
-                          )}`}
-                        >
-                          {task.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 sm:flex sm:justify-between">
-                      <div className="sm:flex">
-                        <p className="flex items-center text-sm text-gray-500">
-                          <svg
-                            className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                          {task.assignee}
-                        </p>
-                      </div>
-                      <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                        <svg
-                          className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <p>Due {new Date(task.dueDate).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </div>
         )}
@@ -719,47 +1185,106 @@ const ProjectDetail: React.FC = () => {
               <button
                 type="button"
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowAddMemberModal(true)}
+                onClick={handleOpenAddMemberModal}
               >
                 Add Members
               </button>
             </div>
             <div className="border-t border-gray-200">
-              <ul className="divide-y divide-gray-200">
-                {projectData.teamMembers.map((member) => (
-                  <li
-                    key={member.id}
-                    className="px-4 py-4 sm:px-6 hover:bg-gray-50"
+              {loadingTeam ? (
+                <div className="flex justify-center py-16">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                </div>
+              ) : teamMembers.length === 0 ? (
+                <div className="px-4 py-16 text-center text-gray-500">
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
                   >
-                    <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0">
-                        <img
-                          className="h-12 w-12 rounded-full"
-                          src={member.avatar}
-                          alt={member.name}
-                        />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                    />
+                  </svg>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">
+                    No team members
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Get started by adding team members to this project.
+                  </p>
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMemberModal(true)}
+                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      <svg
+                        className="-ml-1 mr-2 h-5 w-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                      </svg>
+                      Add Team Members
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {projectWithDefaults.teamMembers.map((member: any) => (
+                    <li
+                      key={member.id}
+                      className="px-4 py-4 sm:px-6 hover:bg-gray-50"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0">
+                          <img
+                            className="h-12 w-12 rounded-full"
+                            src={member.avatar}
+                            alt={member.name}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {member.name}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {member.position || member.role}
+                          </p>
+                          {member.email && (
+                            <p className="text-xs text-gray-500 truncate">
+                              {member.email}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            onClick={() => handleViewMember(member)}
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            className="ml-2 inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                            onClick={() => confirmRemoveTeamMember(member)}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {member.name}
-                        </p>
-                        <p className="text-sm text-gray-500 truncate">
-                          {member.role}
-                        </p>
-                      </div>
-                      <div>
-                        <button
-                          type="button"
-                          className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                          onClick={() => handleViewMember(member)}
-                        >
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}
@@ -771,64 +1296,253 @@ const ProjectDetail: React.FC = () => {
               <h3 className="text-lg leading-6 font-medium text-gray-900">
                 Project Activity
               </h3>
+              {projectActivities.length < 6 && (
+                <button
+                  onClick={async () => {
+                    if (!projectId || !userData) return;
+
+                    try {
+                      // Add 10 sample activities
+                      for (let i = 1; i <= 10; i++) {
+                        await logProjectActivity(
+                          `Sample activity ${i} for testing pagination`
+                        );
+                      }
+
+                      // Refresh activities
+                      const activities = await getProjectActivities(projectId);
+                      setProjectActivities(activities);
+                      showSuccess(
+                        "Sample Activities",
+                        "Added sample activities for testing"
+                      );
+                    } catch (error) {
+                      console.error("Error adding sample activities:", error);
+                      showError("Error", "Failed to add sample activities");
+                    }
+                  }}
+                  className="ml-2 inline-flex items-center px-2 5 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Add Test Activities
+                </button>
+              )}
             </div>
             <div className="border-t border-gray-200">
               <div className="bg-gray-50 px-4 py-6 sm:px-6">
                 <div className="flow-root">
-                  <ul className="-mb-8">
-                    {projectData.activity.map((item, itemIdx) => (
-                      <li key={item.id}>
-                        <div className="relative pb-8">
-                          {itemIdx !== projectData.activity.length - 1 ? (
-                            <span
-                              className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200"
-                              aria-hidden="true"
-                            ></span>
-                          ) : null}
-                          <div className="relative flex items-start space-x-3">
-                            <div className="relative">
-                              <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center ring-8 ring-white">
-                                <svg
-                                  className="h-5 w-5 text-white"
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                                  />
-                                </svg>
-                              </div>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div>
-                                <div className="text-sm">
-                                  <a
-                                    href="#"
-                                    className="font-medium text-gray-900"
-                                  >
-                                    {item.user}
-                                  </a>
+                  {loadingActivities ? (
+                    <div className="flex justify-center py-16">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                    </div>
+                  ) : projectActivities.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500">
+                      <p>No activities recorded for this project yet.</p>
+                    </div>
+                  ) : (
+                    <ul className="-mb-8">
+                      {currentActivities.map((item: any, itemIdx: number) => (
+                        <li key={item.id}>
+                          <div className="relative pb-8">
+                            {itemIdx !== currentActivities.length - 1 ? (
+                              <span
+                                className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200"
+                                aria-hidden="true"
+                              ></span>
+                            ) : null}
+                            <div className="relative flex items-start space-x-3">
+                              <div className="relative">
+                                <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center ring-8 ring-white">
+                                  {item.userAvatar ? (
+                                    <img
+                                      src={item.userAvatar}
+                                      alt={item.userName}
+                                      className="h-10 w-10 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <svg
+                                      className="h-5 w-5 text-white"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                      />
+                                    </svg>
+                                  )}
                                 </div>
-                                <p className="mt-0.5 text-sm text-gray-500">
-                                  {item.action}
-                                </p>
                               </div>
-                              <div className="mt-2 text-sm text-gray-500">
-                                <p>
-                                  {new Date(item.timestamp).toLocaleString()}
-                                </p>
+                              <div className="min-w-0 flex-1">
+                                <div>
+                                  <div className="text-sm">
+                                    <span className="font-medium text-gray-900">
+                                      {item.userName}
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 text-sm text-gray-500">
+                                    {item.action}
+                                  </p>
+                                </div>
+                                <div className="mt-2 text-sm text-gray-500">
+                                  <p>
+                                    {item.timestamp && item.timestamp.toDate
+                                      ? item.timestamp.toDate().toLocaleString()
+                                      : new Date().toLocaleString()}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* Pagination controls - always visible */}
+                  <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-3">
+                    <div className="flex flex-1 justify-between sm:hidden">
+                      <button
+                        onClick={() =>
+                          handleActivityPageChange(activitiesPage - 1)
+                        }
+                        disabled={activitiesPage === 1}
+                        className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
+                          activitiesPage === 1
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleActivityPageChange(activitiesPage + 1)
+                        }
+                        disabled={
+                          indexOfLastActivity >= projectActivities.length
+                        }
+                        className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
+                          indexOfLastActivity >= projectActivities.length
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
+                        Next
+                      </button>
+                    </div>
+                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm text-gray-700">
+                          Showing{" "}
+                          <span className="font-medium">
+                            {projectActivities.length > 0
+                              ? indexOfFirstActivity + 1
+                              : 0}
+                          </span>{" "}
+                          to{" "}
+                          <span className="font-medium">
+                            {Math.min(
+                              indexOfLastActivity,
+                              projectActivities.length
+                            )}
+                          </span>{" "}
+                          of{" "}
+                          <span className="font-medium">
+                            {projectActivities.length}
+                          </span>{" "}
+                          activities
+                        </p>
+                      </div>
+                      <div>
+                        <nav
+                          className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                          aria-label="Pagination"
+                        >
+                          <button
+                            onClick={() =>
+                              handleActivityPageChange(activitiesPage - 1)
+                            }
+                            disabled={activitiesPage === 1}
+                            className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 ${
+                              activitiesPage === 1
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                          >
+                            <span className="sr-only">Previous</span>
+                            <svg
+                              className="h-5 w-5"
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </button>
+
+                          {/* Page number buttons */}
+                          {Array.from({
+                            length: Math.max(
+                              1,
+                              Math.ceil(
+                                projectActivities.length / activitiesPerPage
+                              )
+                            ),
+                          }).map((_, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleActivityPageChange(idx + 1)}
+                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                activitiesPage === idx + 1
+                                  ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
+                                  : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                              }`}
+                            >
+                              {idx + 1}
+                            </button>
+                          ))}
+
+                          <button
+                            onClick={() =>
+                              handleActivityPageChange(activitiesPage + 1)
+                            }
+                            disabled={
+                              indexOfLastActivity >= projectActivities.length
+                            }
+                            className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 ${
+                              indexOfLastActivity >= projectActivities.length
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                          >
+                            <span className="sr-only">Next</span>
+                            <svg
+                              className="h-5 w-5"
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </button>
+                        </nav>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -852,7 +1566,46 @@ const ProjectDetail: React.FC = () => {
             </button>
             <button
               className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => setShowEditModal(false)}
+              onClick={async () => {
+                try {
+                  const titleInput = document.getElementById(
+                    "project-title"
+                  ) as HTMLInputElement;
+                  const descriptionInput = document.getElementById(
+                    "description"
+                  ) as HTMLTextAreaElement;
+                  const statusInput = document.getElementById(
+                    "status"
+                  ) as HTMLSelectElement;
+
+                  if (titleInput && statusInput) {
+                    // Update the project
+                    await updateProject(projectId!, {
+                      name: titleInput.value,
+                      description:
+                        descriptionInput?.value || project.description,
+                      status: statusInput.value,
+                    });
+
+                    // Log the activity
+                    await logProjectActivity(`updated the project details`);
+
+                    // Refresh project data
+                    const updatedProject = await getProject(projectId!);
+                    setProject(updatedProject);
+
+                    showSuccess(
+                      "Project Updated",
+                      "The project has been updated successfully"
+                    );
+                  }
+                } catch (error) {
+                  console.error("Error updating project:", error);
+                  showError("Error", "Failed to update project");
+                }
+
+                setShowEditModal(false);
+              }}
             >
               Save Changes
             </button>
@@ -870,7 +1623,7 @@ const ProjectDetail: React.FC = () => {
             <input
               type="text"
               id="project-title"
-              defaultValue={projectData.title}
+              defaultValue={project.name || ""}
               className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
             />
           </div>
@@ -884,7 +1637,7 @@ const ProjectDetail: React.FC = () => {
             <textarea
               id="description"
               rows={3}
-              defaultValue={projectData.description}
+              defaultValue={project.description}
               className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
             />
           </div>
@@ -899,7 +1652,7 @@ const ProjectDetail: React.FC = () => {
               <input
                 type="date"
                 id="start-date"
-                defaultValue={projectData.startDate}
+                defaultValue={project.startDate}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               />
             </div>
@@ -913,7 +1666,7 @@ const ProjectDetail: React.FC = () => {
               <input
                 type="date"
                 id="end-date"
-                defaultValue={projectData.endDate}
+                defaultValue={project.endDate}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               />
             </div>
@@ -928,7 +1681,7 @@ const ProjectDetail: React.FC = () => {
               </label>
               <select
                 id="status"
-                defaultValue={projectData.status}
+                defaultValue={project.status}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               >
                 <option>Not Started</option>
@@ -947,7 +1700,7 @@ const ProjectDetail: React.FC = () => {
               </label>
               <select
                 id="priority"
-                defaultValue={projectData.priority}
+                defaultValue={project.priority}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               >
                 <option>Low</option>
@@ -970,7 +1723,7 @@ const ProjectDetail: React.FC = () => {
               <input
                 type="text"
                 id="budget"
-                defaultValue={projectData.budget}
+                defaultValue={project.budget || ""}
                 className="mt-1 pl-7 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               />
             </div>
@@ -1008,8 +1761,7 @@ const ProjectDetail: React.FC = () => {
               className="ml-3 px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
               onClick={() => {
                 setShowDeleteProjectModal(false);
-                // In a real app, we would delete the project and navigate
-                window.location.href = "/employer/projects";
+                handleDeleteProject();
               }}
             >
               Delete
@@ -1025,7 +1777,7 @@ const ProjectDetail: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Add Task Modal - would be added when the "Add Task" button is clicked */}
+      {/* Add Task Modal */}
       <Modal
         isOpen={showAddTaskModal}
         onClose={() => setShowAddTaskModal(false)}
@@ -1036,14 +1788,16 @@ const ProjectDetail: React.FC = () => {
             <button
               className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowAddTaskModal(false)}
+              disabled={addingTask}
             >
               Cancel
             </button>
             <button
-              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => setShowAddTaskModal(false)}
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleAddTask}
+              disabled={addingTask}
             >
-              Add Task
+              {addingTask ? "Adding..." : "Add Task"}
             </button>
           </>
         }
@@ -1051,44 +1805,56 @@ const ProjectDetail: React.FC = () => {
         <div className="py-4 space-y-4">
           <div>
             <label
-              htmlFor="task-title"
+              htmlFor="title"
               className="block text-sm font-medium text-gray-700"
             >
-              Task Title
+              Task Title *
             </label>
             <input
               type="text"
-              id="task-title"
+              id="title"
+              name="title"
+              value={taskFormData.title}
+              onChange={handleTaskFormChange}
               className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              required
             />
           </div>
           <div>
             <label
-              htmlFor="task-description"
+              htmlFor="description"
               className="block text-sm font-medium text-gray-700"
             >
               Description
             </label>
             <textarea
-              id="task-description"
+              id="description"
+              name="description"
               rows={3}
+              value={taskFormData.description}
+              onChange={handleTaskFormChange}
               className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="task-assignee"
+                htmlFor="assignedTo"
                 className="block text-sm font-medium text-gray-700"
               >
-                Assignee
+                Assignee *
               </label>
               <select
-                id="task-assignee"
+                id="assignedTo"
+                name="assignedTo"
+                value={taskFormData.assignedTo}
+                onChange={handleTaskFormChange}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                required
               >
-                {projectData.teamMembers.map((member) => (
-                  <option key={member.id} value={member.name}>
+                <option value="">Select team member</option>
+                {teamMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
                     {member.name}
                   </option>
                 ))}
@@ -1096,49 +1862,96 @@ const ProjectDetail: React.FC = () => {
             </div>
             <div>
               <label
-                htmlFor="task-due-date"
+                htmlFor="dueDate"
                 className="block text-sm font-medium text-gray-700"
               >
-                Due Date
+                Due Date *
               </label>
               <input
                 type="date"
-                id="task-due-date"
+                id="dueDate"
+                name="dueDate"
+                value={taskFormData.dueDate}
+                onChange={handleTaskFormChange}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                required
               />
             </div>
           </div>
+          {taskFormData.assignedTo && (
+            <div>
+              <label
+                htmlFor="whatsappNumber"
+                className="block text-sm font-medium text-gray-700"
+              >
+                WhatsApp Number (for notifications)
+              </label>
+              <div className="mt-1 flex items-center">
+                <input
+                  type="text"
+                  id="whatsappNumber"
+                  name="whatsappNumber"
+                  placeholder="Country code + number (e.g. 14155552671)"
+                  className="block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                  defaultValue={
+                    teamMembers.find((m) => m.id === taskFormData.assignedTo)
+                      ?.whatsappNumber || ""
+                  }
+                  onChange={(e) => {
+                    // Update the member's WhatsApp number in the state
+                    const updatedMembers = teamMembers.map((member) => {
+                      if (member.id === taskFormData.assignedTo) {
+                        return { ...member, whatsappNumber: e.target.value };
+                      }
+                      return member;
+                    });
+                    setTeamMembers(updatedMembers);
+                  }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Enter WhatsApp number with country code (no + symbol)
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="task-priority"
+                htmlFor="priority"
                 className="block text-sm font-medium text-gray-700"
               >
                 Priority
               </label>
               <select
-                id="task-priority"
+                id="priority"
+                name="priority"
+                value={taskFormData.priority}
+                onChange={handleTaskFormChange}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
               </select>
             </div>
             <div>
               <label
-                htmlFor="task-status"
+                htmlFor="status"
                 className="block text-sm font-medium text-gray-700"
               >
                 Status
               </label>
               <select
-                id="task-status"
+                id="status"
+                name="status"
+                value={taskFormData.status}
+                onChange={handleTaskFormChange}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               >
-                <option>Not Started</option>
-                <option>In Progress</option>
-                <option>Completed</option>
+                <option value="Not Started">Not Started</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
               </select>
             </div>
           </div>
@@ -1156,14 +1969,16 @@ const ProjectDetail: React.FC = () => {
             <button
               className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowAddMemberModal(false)}
+              disabled={addingTeamMember}
             >
               Cancel
             </button>
             <button
-              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => setShowAddMemberModal(false)}
+              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleAddTeamMembers}
+              disabled={addingTeamMember || selectedEmployees.length === 0}
             >
-              Add Members
+              {addingTeamMember ? "Adding..." : "Add Members"}
             </button>
           </>
         }
@@ -1174,88 +1989,79 @@ const ProjectDetail: React.FC = () => {
               Select Employees
             </label>
             <div className="mt-2 space-y-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md p-2">
-              {/* Employee selection list */}
-              {[
-                {
-                  id: 5,
-                  name: "Alex Thompson",
-                  role: "DevOps Engineer",
-                  avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-                },
-                {
-                  id: 6,
-                  name: "Jessica Williams",
-                  role: "UI Designer",
-                  avatar: "https://randomuser.me/api/portraits/women/25.jpg",
-                },
-                {
-                  id: 7,
-                  name: "Robert Lewis",
-                  role: "QA Engineer",
-                  avatar: "https://randomuser.me/api/portraits/men/67.jpg",
-                },
-              ].map((emp) => (
-                <div
-                  key={emp.id}
-                  className="flex items-center p-2 hover:bg-gray-50 rounded"
-                >
-                  <input
-                    id={`employee-${emp.id}`}
-                    name={`employee-${emp.id}`}
-                    type="checkbox"
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label
-                    htmlFor={`employee-${emp.id}`}
-                    className="ml-3 flex items-center cursor-pointer"
-                  >
-                    <img
-                      src={emp.avatar}
-                      alt={emp.name}
-                      className="h-8 w-8 rounded-full mr-2"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {emp.name}
-                      </p>
-                      <p className="text-xs text-gray-500">{emp.role}</p>
-                    </div>
-                  </label>
+              {loadingEmployees ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
                 </div>
-              ))}
+              ) : availableEmployees.length === 0 ? (
+                <div className="py-8 text-center text-gray-500 text-sm">
+                  No available employees to add
+                </div>
+              ) : (
+                availableEmployees.map((emp) => (
+                  <div
+                    key={emp.id}
+                    className="flex items-center p-2 hover:bg-gray-50 rounded"
+                  >
+                    <input
+                      id={`employee-${emp.id}`}
+                      name={`employee-${emp.id}`}
+                      type="checkbox"
+                      checked={selectedEmployees.includes(emp.id)}
+                      onChange={() => handleEmployeeSelection(emp.id)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label
+                      htmlFor={`employee-${emp.id}`}
+                      className="ml-3 flex items-center cursor-pointer"
+                    >
+                      <img
+                        src={emp.avatar}
+                        alt={emp.name}
+                        className="h-8 w-8 rounded-full mr-2"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {emp.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {emp.position || emp.role}
+                        </p>
+                      </div>
+                    </label>
+                    {selectedEmployees.includes(emp.id) && (
+                      <div className="ml-auto flex items-center">
+                        <input
+                          type="text"
+                          placeholder="WhatsApp number"
+                          className="text-xs p-1 border border-gray-300 rounded"
+                          defaultValue={emp.whatsappNumber || ""}
+                          onChange={(e) => {
+                            // Update the employee's WhatsApp number in the availableEmployees array
+                            const updatedEmployees = availableEmployees.map(
+                              (employee) => {
+                                if (employee.id === emp.id) {
+                                  return {
+                                    ...employee,
+                                    whatsappNumber: e.target.value,
+                                  };
+                                }
+                                return employee;
+                              }
+                            );
+                            setAvailableEmployees(updatedEmployees);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
-          </div>
-          <div>
-            <label
-              htmlFor="member-role"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Role in Project
-            </label>
-            <select
-              id="member-role"
-              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-            >
-              <option value="Developer">Developer</option>
-              <option value="Designer">Designer</option>
-              <option value="Project Manager">Project Manager</option>
-              <option value="QA Tester">QA Tester</option>
-              <option value="DevOps">DevOps</option>
-            </select>
-          </div>
-          <div>
-            <label
-              htmlFor="member-notes"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Additional Notes
-            </label>
-            <textarea
-              id="member-notes"
-              rows={3}
-              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              placeholder="Responsibilities, availability, etc."
-            />
+            <p className="mt-2 text-xs text-gray-500">
+              Enter WhatsApp numbers with country code (e.g. 14155552671 for US
+              number)
+            </p>
           </div>
         </div>
       </Modal>
@@ -1287,77 +2093,98 @@ const ProjectDetail: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-900">
                   {selectedMember.name}
                 </h3>
-                <p className="text-sm text-gray-500">{selectedMember.role}</p>
+                <p className="text-sm text-gray-500">
+                  {selectedMember.position || selectedMember.role}
+                </p>
+                {selectedMember.email && (
+                  <p className="text-sm text-gray-500">
+                    {selectedMember.email}
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="space-y-4">
               <div>
                 <h4 className="text-sm font-medium text-gray-700">
+                  Department
+                </h4>
+                <p className="mt-1 text-sm text-gray-600">
+                  {selectedMember.department || "Not assigned"}
+                </p>
+              </div>
+
+              {selectedMember.status && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700">Status</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        selectedMember.status === "active"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {selectedMember.status.charAt(0).toUpperCase() +
+                        selectedMember.status.slice(1)}
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {selectedMember.joinDate && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700">Joined</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {new Date(selectedMember.joinDate).toLocaleDateString()}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-700">
                   Assigned Tasks
                 </h4>
                 <div className="mt-1 bg-gray-50 rounded-md p-3">
                   <ul className="space-y-2">
-                    {projectData.tasks
-                      .filter((task) => task.assignee === selectedMember.name)
-                      .map((task) => (
-                        <li key={task.id} className="flex items-center">
-                          <span
-                            className={`h-2 w-2 rounded-full mr-2 ${
-                              task.status === "Completed"
-                                ? "bg-green-500"
-                                : task.status === "In Progress"
-                                ? "bg-blue-500"
-                                : "bg-gray-300"
-                            }`}
-                          ></span>
-                          <span className="text-sm">{task.title}</span>
-                          <span
-                            className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                              task.status
-                            )}`}
-                          >
-                            {task.status}
-                          </span>
-                        </li>
-                      ))}
-                    {!projectData.tasks.some(
-                      (task) => task.assignee === selectedMember.name
-                    ) && (
-                      <li className="text-sm text-gray-500">
-                        No tasks assigned
+                    {loadingTasks ? (
+                      <li className="flex justify-center py-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
                       </li>
+                    ) : (
+                      projectTasks
+                        .filter((task) => task.assignedTo === selectedMember.id)
+                        .map((task) => (
+                          <li key={task.id} className="flex items-center">
+                            <span
+                              className={`h-2 w-2 rounded-full mr-2 ${
+                                task.status === "Completed"
+                                  ? "bg-green-500"
+                                  : task.status === "In Progress"
+                                  ? "bg-blue-500"
+                                  : "bg-gray-300"
+                              }`}
+                            ></span>
+                            <span className="text-sm">{task.title}</span>
+                            <span
+                              className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                task.status
+                              )}`}
+                            >
+                              {task.status}
+                            </span>
+                          </li>
+                        ))
                     )}
+                    {!loadingTasks &&
+                      !projectTasks.some(
+                        (task) => task.assignedTo === selectedMember.id
+                      ) && (
+                        <li className="text-sm text-gray-500">
+                          No tasks assigned
+                        </li>
+                      )}
                   </ul>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-medium text-gray-700">Skills</h4>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {["JavaScript", "React", "TypeScript", "UI Design"].map(
-                    (skill) => (
-                      <span
-                        key={skill}
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-800"
-                      >
-                        {skill}
-                      </span>
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-medium text-gray-700">
-                  Contact Information
-                </h4>
-                <div className="mt-1 text-sm text-gray-500">
-                  <p>
-                    Email: {selectedMember.name.toLowerCase().replace(" ", ".")}
-                    @company.com
-                  </p>
-                  <p>Phone: +1 (555) 123-4567</p>
                 </div>
               </div>
 
@@ -1365,12 +2192,18 @@ const ProjectDetail: React.FC = () => {
                 <button
                   type="button"
                   className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  onClick={() => setShowAddTaskModal(true)}
                 >
-                  Reassign Tasks
+                  Assign New Task
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  onClick={() => {
+                    if (selectedMember) {
+                      confirmRemoveTeamMember(selectedMember);
+                    }
+                  }}
                 >
                   Remove from Project
                 </button>
@@ -1379,6 +2212,20 @@ const ProjectDetail: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Remove Team Member Modal */}
+      <RemoveMemberModal
+        isOpen={showRemoveMemberModal}
+        memberToRemove={memberToRemove}
+        onClose={() => {
+          if (!removingMember) {
+            setShowRemoveMemberModal(false);
+            setMemberToRemove(null);
+          }
+        }}
+        onConfirm={handleRemoveTeamMember}
+        isLoading={removingMember}
+      />
     </div>
   );
 };

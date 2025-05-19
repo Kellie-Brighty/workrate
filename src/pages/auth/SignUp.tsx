@@ -1,17 +1,41 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useErrorNotification,
+  useSuccessNotification,
+} from "../../contexts/NotificationContext";
 
 const SignUp: React.FC = () => {
   const navigate = useNavigate();
+  const { register, error, setError, userData, currentUser } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const showError = useErrorNotification();
+  const showSuccess = useSuccessNotification();
   const [formData, setFormData] = useState({
     companyName: "",
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
+    userType: "employer" as "employer" | "employee", // Default to employer
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Effect to navigate when userData is loaded
+  useEffect(() => {
+    if (currentUser && userData) {
+      // Navigate based on user type
+      if (userData.userType === "employer") {
+        navigate("/employer/dashboard");
+      } else {
+        navigate("/employee/dashboard");
+      }
+    }
+  }, [userData, currentUser, navigate]);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -19,11 +43,64 @@ const SignUp: React.FC = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted with:", formData);
-    // Navigate to employer dashboard after form submission
-    navigate("/employer/dashboard");
+
+    // Form validation
+    if (
+      !formData.companyName ||
+      !formData.fullName ||
+      !formData.email ||
+      !formData.password
+    ) {
+      setError("Please fill in all required fields");
+      showError("Registration Failed", "Please fill in all required fields");
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      showError("Registration Failed", "Passwords do not match");
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError("Password must be at least 6 characters");
+      showError(
+        "Registration Failed",
+        "Password must be at least 6 characters"
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Register with Firebase and store additional data in Firestore
+      const userData = {
+        companyName: formData.companyName,
+        fullName: formData.fullName,
+        userType: formData.userType,
+      };
+
+      await register(formData.email, formData.password, userData);
+      showSuccess(
+        "Registration Successful",
+        "Your account has been created successfully"
+      );
+
+      // Navigation will happen in the useEffect when userData is available
+    } catch (err) {
+      console.error("Sign up error:", err);
+      // Display error notification here since we removed it from AuthContext
+      showError(
+        "Registration Failed",
+        err instanceof Error ? err.message : "Failed to register"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -199,105 +276,115 @@ const SignUp: React.FC = () => {
                 style={{ animationDuration: "7s" }}
               />
 
-              {/* Simplified document elements for mobile */}
+              {/* Simplified company element */}
               <g className="animate-pulse" style={{ animationDuration: "4s" }}>
                 <rect
                   x="85"
-                  y="60"
+                  y="75"
                   width="80"
-                  height="60"
-                  rx="8"
+                  height="50"
+                  rx="5"
                   fill="#4F46E5"
                 />
-                <rect x="95" y="75" width="60" height="5" rx="2" fill="white" />
-                <rect x="95" y="85" width="60" height="5" rx="2" fill="white" />
-                <rect x="95" y="95" width="40" height="5" rx="2" fill="white" />
-              </g>
-
-              {/* Team members - simplified */}
-              <g className="animate-bounce" style={{ animationDuration: "3s" }}>
-                <circle cx="95" cy="45" r="12" fill="#4F46E5" />
-                <circle cx="125" cy="38" r="12" fill="#818CF8" />
-                <circle cx="155" cy="45" r="12" fill="#4F46E5" />
-
-                {/* Connection lines */}
-                <line
-                  x1="107"
-                  y1="45"
-                  x2="113"
-                  y2="38"
-                  stroke="#C7D2FE"
-                  strokeWidth="2"
-                />
-                <line
-                  x1="137"
-                  y1="38"
-                  x2="143"
-                  y2="45"
-                  stroke="#C7D2FE"
-                  strokeWidth="2"
+                <rect x="95" y="85" width="60" height="5" rx="1" fill="white" />
+                <rect x="95" y="95" width="60" height="5" rx="1" fill="white" />
+                <rect
+                  x="95"
+                  y="105"
+                  width="40"
+                  height="5"
+                  rx="1"
+                  fill="white"
                 />
               </g>
 
-              {/* Data transmission dots - animated */}
-              <g className="animate-ping" style={{ animationDuration: "4s" }}>
-                <circle cx="110" cy="42" r="3" fill="white" />
-                <circle cx="140" cy="42" r="3" fill="white" />
-              </g>
+              {/* Simplified team members */}
+              <circle
+                cx="100"
+                cy="55"
+                r="8"
+                fill="#4F46E5"
+                className="animate-pulse"
+              />
+              <circle
+                cx="125"
+                cy="50"
+                r="8"
+                fill="#818CF8"
+                className="animate-pulse"
+              />
+              <circle
+                cx="150"
+                cy="55"
+                r="8"
+                fill="#4F46E5"
+                className="animate-pulse"
+              />
 
-              {/* Small floating elements */}
-              <circle
-                cx="70"
-                cy="60"
-                r="5"
-                fill="#818CF8"
-                className="animate-ping"
-                style={{ animationDuration: "2s" }}
+              {/* Connection lines */}
+              <line
+                x1="108"
+                y1="55"
+                x2="117"
+                y2="50"
+                stroke="#C7D2FE"
+                strokeWidth="1"
               />
-              <circle
-                cx="180"
-                cy="60"
-                r="4"
-                fill="#C7D2FE"
-                className="animate-ping"
-                style={{ animationDuration: "3s" }}
-              />
-              <circle
-                cx="70"
-                cy="120"
-                r="6"
-                fill="#C7D2FE"
-                className="animate-ping"
-                style={{ animationDuration: "4s" }}
-              />
-              <circle
-                cx="180"
-                cy="120"
-                r="5"
-                fill="#818CF8"
-                className="animate-ping"
-                style={{ animationDuration: "3.5s" }}
+              <line
+                x1="133"
+                y1="50"
+                x2="142"
+                y2="55"
+                stroke="#C7D2FE"
+                strokeWidth="1"
               />
             </svg>
 
             <div className="text-center">
               <h2 className="text-xl font-bold text-indigo-700">
-                Join WorkRate
+                Create your account
               </h2>
-              {/* <p className="text-sm text-gray-600">Create your account today</p> */}
+              <p className="text-sm text-gray-600">Track, optimize, succeed</p>
             </div>
           </div>
         </div>
 
         <div className="w-full max-w-md mx-auto">
-          <div className="text-center mb-8">
+          <div className="text-center mb-10">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Sign up</h2>
             <p className="text-gray-500">
-              Create an employer account to get started
+              Create your account to start tracking productivity
             </p>
           </div>
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          {error && (
+            <div className="mb-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <label
+                htmlFor="userType"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Account Type
+              </label>
+              <div className="mt-1">
+                <select
+                  id="userType"
+                  name="userType"
+                  value={formData.userType}
+                  onChange={handleChange}
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                >
+                  <option value="employer">Employer (Manager)</option>
+                  <option value="employee">Employee</option>
+                </select>
+              </div>
+            </div>
+
             <div>
               <label
                 htmlFor="companyName"
@@ -305,22 +392,7 @@ const SignUp: React.FC = () => {
               >
                 Company Name
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4zm3 1h6v4H7V5zm6 6H7v2h6v-2z"
-                      clipRule="evenodd"
-                    />
-                    <path d="M7 14h6v2H7v-2z" />
-                  </svg>
-                </div>
+              <div className="mt-1">
                 <input
                   id="companyName"
                   name="companyName"
@@ -328,8 +400,8 @@ const SignUp: React.FC = () => {
                   required
                   value={formData.companyName}
                   onChange={handleChange}
-                  className="pl-10 appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  placeholder="Your company name"
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  placeholder="Acme Inc."
                 />
               </div>
             </div>
@@ -341,21 +413,7 @@ const SignUp: React.FC = () => {
               >
                 Full Name
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
+              <div className="mt-1">
                 <input
                   id="fullName"
                   name="fullName"
@@ -363,8 +421,8 @@ const SignUp: React.FC = () => {
                   required
                   value={formData.fullName}
                   onChange={handleChange}
-                  className="pl-10 appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  placeholder="Your full name"
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  placeholder="John Doe"
                 />
               </div>
             </div>
@@ -376,18 +434,7 @@ const SignUp: React.FC = () => {
               >
                 Email address
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                  </svg>
-                </div>
+              <div className="mt-1">
                 <input
                   id="email"
                   name="email"
@@ -396,7 +443,7 @@ const SignUp: React.FC = () => {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="pl-10 appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                   placeholder="you@example.com"
                 />
               </div>
@@ -409,35 +456,21 @@ const SignUp: React.FC = () => {
               >
                 Password
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
+              <div className="mt-1">
                 <input
                   id="password"
                   name="password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="pl-10 appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                   placeholder="••••••••"
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Password must be at least 8 characters long
+                Password must be at least 6 characters
               </p>
             </div>
 
@@ -448,40 +481,30 @@ const SignUp: React.FC = () => {
               >
                 Confirm Password
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
+              <div className="mt-1">
                 <input
                   id="confirmPassword"
                   name="confirmPassword"
                   type="password"
+                  autoComplete="new-password"
                   required
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className="pl-10 appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                   placeholder="••••••••"
                 />
               </div>
             </div>
 
-            <div className="pt-2">
+            <div>
               <button
                 type="submit"
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
+                disabled={loading}
+                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200 ${
+                  loading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                Create Account
+                {loading ? "Creating Account..." : "Sign up"}
               </button>
             </div>
           </form>
@@ -495,19 +518,6 @@ const SignUp: React.FC = () => {
               >
                 Sign in
               </Link>
-            </p>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-xs text-center text-gray-500">
-              By creating an account, you agree to our{" "}
-              <a href="#" className="text-indigo-600 hover:text-indigo-500">
-                Terms of Service
-              </a>{" "}
-              and{" "}
-              <a href="#" className="text-indigo-600 hover:text-indigo-500">
-                Privacy Policy
-              </a>
             </p>
           </div>
         </div>

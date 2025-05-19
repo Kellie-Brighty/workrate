@@ -1,46 +1,20 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { createProject, getEmployees } from "../../services/firebase";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useSuccessNotification,
+  useErrorNotification,
+} from "../../contexts/NotificationContext";
 
-// Mock data
-const employeesList = [
-  {
-    id: 1,
-    name: "Jason Chen",
-    title: "UI/UX Designer",
-    avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson",
-    title: "Frontend Developer",
-    avatar: "https://randomuser.me/api/portraits/women/43.jpg",
-  },
-  {
-    id: 3,
-    name: "Michael Brown",
-    title: "Backend Developer",
-    avatar: "https://randomuser.me/api/portraits/men/44.jpg",
-  },
-  {
-    id: 4,
-    name: "Emily Davis",
-    title: "Product Manager",
-    avatar: "https://randomuser.me/api/portraits/women/45.jpg",
-  },
-  {
-    id: 5,
-    name: "David Wilson",
-    title: "QA Engineer",
-    avatar: "https://randomuser.me/api/portraits/men/46.jpg",
-  },
-  {
-    id: 6,
-    name: "Lisa Martinez",
-    title: "Data Analyst",
-    avatar: "https://randomuser.me/api/portraits/women/47.jpg",
-  },
-];
+// Will be replaced with real data
 
 const CreateProject: React.FC = () => {
+  const navigate = useNavigate();
+  const { userData } = useAuth();
+  const showSuccess = useSuccessNotification();
+  const showError = useErrorNotification();
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -50,8 +24,38 @@ const CreateProject: React.FC = () => {
     category: "",
   });
 
-  const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [showEmployeeSelector, setShowEmployeeSelector] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+
+  // AI Task Generation options
+  const [taskGenOptions, setTaskGenOptions] = useState({
+    autoAssign: false,
+    setDeadlines: false,
+    createDependencies: false,
+  });
+
+  // Fetch employees when component loads
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        if (userData?.id) {
+          setLoadingEmployees(true);
+          const employeeData = await getEmployees(userData.id);
+          setEmployees(employeeData);
+        }
+      } catch (error) {
+        console.error("Error fetching employees:", error);
+        showError("Error", "Failed to load employees");
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+
+    fetchEmployees();
+  }, [userData?.id]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -65,7 +69,18 @@ const CreateProject: React.FC = () => {
     }));
   };
 
-  const toggleEmployeeSelection = (employeeId: number) => {
+  // Handle AI task generation options change
+  const handleTaskGenOptionChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, checked } = e.target;
+    setTaskGenOptions((prev) => ({
+      ...prev,
+      [name]: checked,
+    }));
+  };
+
+  const toggleEmployeeSelection = (employeeId: string) => {
     setSelectedEmployees((prev) =>
       prev.includes(employeeId)
         ? prev.filter((id) => id !== employeeId)
@@ -73,14 +88,63 @@ const CreateProject: React.FC = () => {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted with:", formData);
-    console.log("Selected employees:", selectedEmployees);
-    // Here we would send the data to the backend to create the project
+
+    if (!userData?.id) {
+      showError("Error", "User information not available");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Use the selectedEmployees directly as they are now Firebase IDs
+      const teamMembers = selectedEmployees;
+
+      // Map form data to ProjectData structure
+      const projectData = {
+        name: formData.title,
+        description: formData.description,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        priority: formData.priority,
+        category: formData.category,
+        team: teamMembers,
+        status: "Not Started",
+        progress: 0,
+        createdBy: userData.id,
+        // Add AI task generation options
+        taskGeneration: {
+          autoAssign: taskGenOptions.autoAssign,
+          setDeadlines: taskGenOptions.setDeadlines,
+          createDependencies: taskGenOptions.createDependencies,
+        },
+      };
+
+      // Create project in Firebase
+      await createProject(projectData);
+
+      showSuccess(
+        "Project Created",
+        `Project "${formData.title}" was created successfully!`
+      );
+
+      // Navigate to the projects page
+      navigate("/employer/projects");
+    } catch (error) {
+      console.error("Error creating project:", error);
+      showError(
+        "Project Creation Failed",
+        "There was a problem creating your project. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const selectedEmployeesData = employeesList.filter((employee) =>
+  // Use real employee data instead of mock data
+  const selectedEmployeesData = employees.filter((employee) =>
     selectedEmployees.includes(employee.id)
   );
 
@@ -295,8 +359,17 @@ const CreateProject: React.FC = () => {
                   {showEmployeeSelector && (
                     <div className="mt-2 border border-gray-200 rounded-md overflow-hidden">
                       <div className="max-h-60 overflow-y-auto">
+                        {loadingEmployees ? (
+                          <div className="p-4 text-center text-gray-500">
+                            Loading employees...
+                          </div>
+                        ) : employees.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500">
+                            No employees found
+                          </div>
+                        ) : (
                         <ul className="divide-y divide-gray-200">
-                          {employeesList.map((employee) => (
+                            {employees.map((employee) => (
                             <li
                               key={employee.id}
                               className="p-3 hover:bg-gray-50"
@@ -323,7 +396,7 @@ const CreateProject: React.FC = () => {
                                       {employee.name}
                                     </div>
                                     <div className="text-xs text-gray-500">
-                                      {employee.title}
+                                        {employee.position}
                                     </div>
                                   </div>
                                 </div>
@@ -331,6 +404,7 @@ const CreateProject: React.FC = () => {
                             </li>
                           ))}
                         </ul>
+                        )}
                       </div>
                     </div>
                   )}
@@ -341,15 +415,45 @@ const CreateProject: React.FC = () => {
             <div className="px-4 py-3 bg-gray-50 text-right sm:px-6 flex justify-end">
               <button
                 type="button"
+                onClick={() => navigate("/employer/projects")}
                 className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mr-3"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                disabled={loading}
+                className={`inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
+                  loading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                Create Project
+                {loading ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Creating Project...
+                  </span>
+                ) : (
+                  "Create Project"
+                )}
               </button>
             </div>
           </form>
@@ -374,15 +478,17 @@ const CreateProject: React.FC = () => {
                 <div className="flex items-start">
                   <div className="flex items-center h-5">
                     <input
-                      id="auto-assign"
-                      name="auto-assign"
+                      id="autoAssign"
+                      name="autoAssign"
                       type="checkbox"
+                      checked={taskGenOptions.autoAssign}
+                      onChange={handleTaskGenOptionChange}
                       className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
                     />
                   </div>
                   <div className="ml-3 text-sm">
                     <label
-                      htmlFor="auto-assign"
+                      htmlFor="autoAssign"
                       className="font-medium text-gray-700"
                     >
                       Auto-assign tasks based on skills
@@ -396,15 +502,17 @@ const CreateProject: React.FC = () => {
                 <div className="flex items-start">
                   <div className="flex items-center h-5">
                     <input
-                      id="set-deadlines"
-                      name="set-deadlines"
+                      id="setDeadlines"
+                      name="setDeadlines"
                       type="checkbox"
+                      checked={taskGenOptions.setDeadlines}
+                      onChange={handleTaskGenOptionChange}
                       className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
                     />
                   </div>
                   <div className="ml-3 text-sm">
                     <label
-                      htmlFor="set-deadlines"
+                      htmlFor="setDeadlines"
                       className="font-medium text-gray-700"
                     >
                       Set task deadlines automatically
@@ -418,15 +526,17 @@ const CreateProject: React.FC = () => {
                 <div className="flex items-start">
                   <div className="flex items-center h-5">
                     <input
-                      id="dependency-analysis"
-                      name="dependency-analysis"
+                      id="createDependencies"
+                      name="createDependencies"
                       type="checkbox"
+                      checked={taskGenOptions.createDependencies}
+                      onChange={handleTaskGenOptionChange}
                       className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
                     />
                   </div>
                   <div className="ml-3 text-sm">
                     <label
-                      htmlFor="dependency-analysis"
+                      htmlFor="createDependencies"
                       className="font-medium text-gray-700"
                     >
                       Create task dependencies

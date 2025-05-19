@@ -21,6 +21,7 @@ import EmployeeTasks from "./pages/employee/Tasks";
 import EmployeePerformance from "./pages/employee/Performance";
 import EmployeeProfile from "./pages/employee/Profile";
 import Layout from "./components/layout/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
@@ -31,167 +32,203 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
 
-        {/* Employer routes - wrapped in Layout */}
+        {/* Employer routes - wrapped in Layout and ProtectedRoute */}
         <Route
           path="/employer/dashboard"
           element={
-            <Layout userType="employer">
-              <EmployerDashboard />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <EmployerDashboard />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/create-project"
           element={
-            <Layout userType="employer">
-              <CreateProject />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <CreateProject />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/projects"
           element={
-            <Layout userType="employer">
-              <Projects />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <Projects />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/projects/:projectId"
           element={
-            <Layout userType="employer">
-              <ProjectDetail />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <ProjectDetail />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/tasks"
           element={
-            <Layout userType="employer">
-              <Tasks />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <Tasks />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/tasks/:taskId"
           element={
-            <Layout userType="employer">
-              <TaskDetail />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <TaskDetail />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/timeapprovals"
           element={
-            <Layout userType="employer">
-              <TimeApprovals />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <TimeApprovals />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/analytics"
           element={
-            <Layout userType="employer">
-              <Analytics />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <Analytics />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/rewards"
           element={
-            <Layout userType="employer">
-              <EmployerRewards />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <EmployerRewards />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/employees"
           element={
-            <Layout userType="employer">
-              <Employees />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <Employees />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employer/settings"
           element={
-            <Layout userType="employer">
-              <Settings />
-            </Layout>
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <Settings />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
-        {/* Employee routes - wrapped in Layout */}
+        {/* Employee routes - wrapped in Layout and ProtectedRoute */}
         <Route
           path="/employee/dashboard"
           element={
-            <Layout userType="employee">
-              <EmployeeDashboard />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeDashboard />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/timetracking"
           element={
-            <Layout userType="employee">
-              <TimeTracking />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <TimeTracking />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/rewards"
           element={
-            <Layout userType="employee">
-              <EmployeeRewards />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeRewards />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/tasks"
           element={
-            <Layout userType="employee">
-              <EmployeeTasks />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeTasks />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/projects"
           element={
-            <Layout userType="employee">
-              <EmployeeProjects />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeProjects />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/performance"
           element={
-            <Layout userType="employee">
-              <EmployeePerformance />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeePerformance />
+              </Layout>
+            </ProtectedRoute>
           }
         />
 
         <Route
           path="/employee/profile"
           element={
-            <Layout userType="employee">
-              <EmployeeProfile />
-            </Layout>
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeProfile />
+              </Layout>
+            </ProtectedRoute>
           }
         />
       </Routes>

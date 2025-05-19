@@ -1,29 +1,39 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal";
 
-// Mock data for demonstration
-const dashboardData = {
-  employees: 24,
-  projects: 8,
-  completedTasks: 149,
-  pendingTasks: 31,
-  topPerformer: {
-    name: "Alex Johnson",
-    title: "Senior Developer",
-    avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-    completionRate: 98,
-    projects: 5,
-  },
-  recentProjects: [
-    { id: 1, name: "Website Redesign", progress: 75, team: 4 },
-    { id: 2, name: "Mobile App Development", progress: 32, team: 6 },
-    { id: 3, name: "CRM Integration", progress: 89, team: 3 },
-    { id: 4, name: "Marketing Campaign", progress: 45, team: 5 },
-  ],
-};
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useErrorNotification,
+  useSuccessNotification,
+} from "../../contexts/NotificationContext";
+import { getEmployees, getProjects, getTasks } from "../../services/firebase";
 
-// Mock notifications
+// Dashboard interface
+interface DashboardData {
+  employees: number;
+  projects: number;
+  tasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  overdueProjects: number;
+  upcomingDeadlines: number;
+  topPerformer: {
+    name: string;
+    title: string;
+    avatar: string;
+    completionRate: number;
+    projects: number;
+  } | null;
+  recentProjects: {
+    id: string;
+    name: string;
+    progress: number;
+    team: number;
+  }[];
+}
+
+// Mock notifications - we'll keep these for now
 const notifications = [
   {
     id: 1,
@@ -56,6 +66,26 @@ const notifications = [
 ];
 
 const EmployerDashboard: React.FC = () => {
+  // Auth context
+  const { userData, logout } = useAuth();
+  const navigate = useNavigate();
+  const showError = useErrorNotification();
+  const showSuccess = useSuccessNotification();
+
+  // State
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    projects: 0,
+    tasks: 0,
+    employees: 0,
+    completedTasks: 0,
+    overdueProjects: 0,
+    upcomingDeadlines: 0,
+    pendingTasks: 0,
+    topPerformer: null,
+    recentProjects: [],
+  });
+
   // State for dropdowns
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -73,6 +103,93 @@ const EmployerDashboard: React.FC = () => {
   // Refs for click outside handlers
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userData?.id) return;
+
+      setLoading(true);
+      try {
+        // Fetch employees count
+        const employeesData = await getEmployees(userData.id);
+        // Type assertion for employee data
+        const activeEmployees = employeesData.filter(
+          (emp: any) => emp.status === "active"
+        ).length;
+
+        // Fetch projects
+        const projectsData = await getProjects();
+        // Type assertion for project data
+        const userProjects = projectsData.filter(
+          (project: any) => project.createdBy === userData.id
+        );
+
+        // Fetch tasks
+        const tasksData = await getTasks();
+        // Type assertion for task data
+        const userTasks = tasksData.filter((task: any) =>
+          userProjects.some((p: any) => p.id === task.projectId)
+        );
+
+        // Calculate stats
+        const completedTasks = userTasks.filter(
+          (task: any) => task.status === "Completed"
+        ).length;
+        const pendingTasks = userTasks.length - completedTasks;
+
+        const now = new Date();
+        const overdueProjects = userProjects.filter((project: any) => {
+          const endDate = new Date(project.endDate);
+          return endDate < now && project.status !== "Completed";
+        }).length;
+
+        // Get upcoming deadlines (projects due in next 7 days)
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+        const upcomingDeadlines = userProjects.filter((project: any) => {
+          const endDate = new Date(project.endDate);
+          return endDate > now && endDate <= sevenDaysFromNow;
+        }).length;
+
+        // Mock recent projects for now
+        const recentProjects = userProjects.slice(0, 3).map((project: any) => ({
+          id: project.id,
+          name: project.name,
+          progress: project.progress || 0,
+          team: (project.team && project.team.length) || 0,
+        }));
+
+        // Update state with real data
+        setDashboardData({
+          projects: userProjects.length,
+          tasks: userTasks.length,
+          employees: activeEmployees,
+          completedTasks,
+          pendingTasks,
+          overdueProjects,
+          upcomingDeadlines,
+          topPerformer: null, // Will be implemented in the future
+          recentProjects: recentProjects || [],
+        });
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        // @ts-ignore - Ignore type checking for this call
+        showError("Error", "Failed to load dashboard data");
+
+        // In case of error, ensure recentProjects is at least an empty array
+        setDashboardData((prev) => ({
+          ...prev,
+          recentProjects: [],
+          topPerformer: null,
+        }));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [userData]);
 
   // Count unread notifications
   const unreadCount = notificationsList.filter((notif) => !notif.read).length;
@@ -363,13 +480,28 @@ const EmployerDashboard: React.FC = () => {
                     </Link>
                   </div>
                   <div className="py-1">
-                    <Link
-                      to="/login"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setProfileOpen(false)}
+                    <button
+                      onClick={async () => {
+                        try {
+                          await logout();
+                          showSuccess(
+                            "Logout Successful",
+                            "You have been logged out successfully"
+                          );
+                          setProfileOpen(false);
+                          navigate("/login");
+                        } catch (error) {
+                          console.error("Logout failed:", error);
+                          showError(
+                            "Logout Failed",
+                            "There was a problem logging you out"
+                          );
+                        }
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       Sign out
-                    </Link>
+                    </button>
                   </div>
                 </div>
               )}
@@ -378,15 +510,25 @@ const EmployerDashboard: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8 w-full">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* Employees Card */}
+          <div
+            className="relative bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            onClick={() => setShowEmployeesModal(true)}
+          >
+            {loading ? (
+              <div className="p-6 flex flex-col items-center justify-center min-h-[160px]">
+                <div className="animate-pulse w-16 h-16 bg-gray-200 rounded-full mb-4"></div>
+                <div className="animate-pulse w-1/2 h-4 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <div className="p-6">
               <div className="flex items-center">
-                <div className="flex-shrink-0 bg-indigo-100 rounded-md p-3">
+                  <div className="p-3 rounded-full bg-indigo-50 text-indigo-600">
                   <svg
-                    className="h-6 w-6 text-indigo-600"
+                      className="h-8 w-8"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -396,42 +538,41 @@ const EmployerDashboard: React.FC = () => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                     />
                   </svg>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                  <div className="ml-5">
+                    <h2 className="text-lg font-medium text-gray-900">
                       Total Employees
-                    </dt>
-                    <dd>
-                      <div className="text-lg font-medium text-gray-900">
+                    </h2>
+                    <div className="mt-1 flex items-baseline">
+                      <p className="text-2xl font-semibold text-indigo-600">
                         {dashboardData.employees}
+                      </p>
                       </div>
-                    </dd>
-                  </dl>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 px-4 py-3 sm:px-6">
-              <div className="text-sm">
-                <button
-                  onClick={() => setShowEmployeesModal(true)}
-                  className="font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  View all<span className="sr-only"> employees</span>
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
+          {/* Projects Card */}
+          <div
+            className="relative bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            onClick={() => setShowProjectsModal(true)}
+          >
+            {loading ? (
+              <div className="p-6 flex flex-col items-center justify-center min-h-[160px]">
+                <div className="animate-pulse w-16 h-16 bg-gray-200 rounded-full mb-4"></div>
+                <div className="animate-pulse w-1/2 h-4 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <div className="p-6">
               <div className="flex items-center">
-                <div className="flex-shrink-0 bg-green-100 rounded-md p-3">
+                  <div className="p-3 rounded-full bg-blue-50 text-blue-600">
                   <svg
-                    className="h-6 w-6 text-green-600"
+                      className="h-8 w-8"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -445,38 +586,37 @@ const EmployerDashboard: React.FC = () => {
                     />
                   </svg>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                  <div className="ml-5">
+                    <h2 className="text-lg font-medium text-gray-900">
                       Active Projects
-                    </dt>
-                    <dd>
-                      <div className="text-lg font-medium text-gray-900">
+                    </h2>
+                    <div className="mt-1 flex items-baseline">
+                      <p className="text-2xl font-semibold text-blue-600">
                         {dashboardData.projects}
+                      </p>
                       </div>
-                    </dd>
-                  </dl>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 px-4 py-3 sm:px-6">
-              <div className="text-sm">
-                <button
-                  onClick={() => setShowProjectsModal(true)}
-                  className="font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  View all<span className="sr-only"> projects</span>
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
+          {/* Completed Tasks Card */}
+          <div
+            className="relative bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            onClick={() => setShowCompletedTasksModal(true)}
+          >
+            {loading ? (
+              <div className="p-6 flex flex-col items-center justify-center min-h-[160px]">
+                <div className="animate-pulse w-16 h-16 bg-gray-200 rounded-full mb-4"></div>
+                <div className="animate-pulse w-1/2 h-4 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <div className="p-6">
               <div className="flex items-center">
-                <div className="flex-shrink-0 bg-blue-100 rounded-md p-3">
+                  <div className="p-3 rounded-full bg-green-50 text-green-600">
                   <svg
-                    className="h-6 w-6 text-blue-600"
+                      className="h-8 w-8"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -486,42 +626,41 @@ const EmployerDashboard: React.FC = () => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
                     />
                   </svg>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                  <div className="ml-5">
+                    <h2 className="text-lg font-medium text-gray-900">
                       Completed Tasks
-                    </dt>
-                    <dd>
-                      <div className="text-lg font-medium text-gray-900">
+                    </h2>
+                    <div className="mt-1 flex items-baseline">
+                      <p className="text-2xl font-semibold text-green-600">
                         {dashboardData.completedTasks}
+                      </p>
                       </div>
-                    </dd>
-                  </dl>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 px-4 py-3 sm:px-6">
-              <div className="text-sm">
-                <button
-                  onClick={() => setShowCompletedTasksModal(true)}
-                  className="font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  View details
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
+          {/* Pending Tasks Card */}
+          <div
+            className="relative bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            onClick={() => setShowPendingTasksModal(true)}
+          >
+            {loading ? (
+              <div className="p-6 flex flex-col items-center justify-center min-h-[160px]">
+                <div className="animate-pulse w-16 h-16 bg-gray-200 rounded-full mb-4"></div>
+                <div className="animate-pulse w-1/2 h-4 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <div className="p-6">
               <div className="flex items-center">
-                <div className="flex-shrink-0 bg-yellow-100 rounded-md p-3">
+                  <div className="p-3 rounded-full bg-amber-50 text-amber-600">
                   <svg
-                    className="h-6 w-6 text-yellow-600"
+                      className="h-8 w-8"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -535,42 +674,54 @@ const EmployerDashboard: React.FC = () => {
                     />
                   </svg>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                  <div className="ml-5">
+                    <h2 className="text-lg font-medium text-gray-900">
                       Pending Tasks
-                    </dt>
-                    <dd>
-                      <div className="text-lg font-medium text-gray-900">
+                    </h2>
+                    <div className="mt-1 flex items-baseline">
+                      <p className="text-2xl font-semibold text-amber-600">
                         {dashboardData.pendingTasks}
+                      </p>
                       </div>
-                    </dd>
-                  </dl>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 px-4 py-3 sm:px-6">
-              <div className="text-sm">
-                <button
-                  onClick={() => setShowPendingTasksModal(true)}
-                  className="font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  View details
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 w-full">
-          {/* Top Performer */}
-          <div className="bg-white rounded-lg shadow overflow-hidden w-full">
-            <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Top Performer Card - 1/3 width on large screens */}
+          <div
+            className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow duration-200 cursor-pointer"
+            onClick={() => setShowTopPerformerModal(true)}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900">
                 Top Performer
               </h3>
+                <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTopPerformerModal(true);
+                }}
+                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                >
+                  View details
+                </button>
+        </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center">
+                <div className="animate-pulse w-24 h-24 bg-gray-200 rounded-full mb-4"></div>
+                <div className="animate-pulse w-2/3 h-4 bg-gray-200 rounded mb-2"></div>
+                <div className="animate-pulse w-1/2 h-3 bg-gray-200 rounded mb-6"></div>
+                <div className="animate-pulse w-full h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="animate-pulse w-full h-16 bg-gray-200 rounded mb-4"></div>
             </div>
-            <div className="px-4 py-5 sm:p-6 flex flex-col items-center">
+            ) : dashboardData.topPerformer ? (
+              <div className="flex flex-col items-center">
               <img
                 className="h-24 w-24 rounded-full mb-4"
                 src={dashboardData.topPerformer.avatar}
@@ -583,9 +734,9 @@ const EmployerDashboard: React.FC = () => {
                 {dashboardData.topPerformer.title}
               </p>
 
-              <div className="mt-4 w-full">
+                <div className="w-full mt-8">
                 <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-gray-500">
                     Completion Rate
                   </span>
                   <span className="text-sm font-medium text-gray-700">
@@ -599,101 +750,140 @@ const EmployerDashboard: React.FC = () => {
                       width: `${dashboardData.topPerformer.completionRate}%`,
                     }}
                   ></div>
-                </div>
               </div>
 
-              <div className="flex justify-between items-center w-full mt-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
+                  <div className="mt-6 grid grid-cols-1 gap-1">
+                    <div className="flex justify-between p-2 bg-gray-50 rounded">
+                      <div className="text-sm text-gray-500">
+                        Active Projects
+                      </div>
+                      <div className="text-sm font-medium text-gray-900">
                     {dashboardData.topPerformer.projects}
                   </div>
-                  <div className="text-xs text-gray-500">Projects</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">24</div>
-                  <div className="text-xs text-gray-500">Tasks</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">12</div>
-                  <div className="text-xs text-gray-500">Rewards</div>
                 </div>
               </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64">
+                <svg
+                  className="h-16 w-16 text-gray-300 mb-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
+                </svg>
+                <p className="text-gray-500">
+                  No top performer data available yet
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Data will appear once employees complete tasks
+                </p>
             </div>
-            <div className="bg-gray-50 px-4 py-4 sm:px-6">
-              <button
-                onClick={() => setShowTopPerformerModal(true)}
-                className="w-full text-center text-sm font-medium text-indigo-600 hover:text-indigo-500"
-              >
-                View Profile
-              </button>
-            </div>
+            )}
           </div>
 
-          {/* Recent Projects */}
-          <div className="lg:col-span-2">
-            <div className="bg-white shadow rounded-lg overflow-hidden w-full">
-              <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex justify-between items-center">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">
+          {/* Recent Projects Card - 2/3 width on large screens */}
+          <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900">
                   Recent Projects
                 </h3>
+              <div className="flex space-x-2">
                 <button
                   onClick={() => setShowAllProjectsModal(true)}
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
                 >
-                  View All
+                  View all
+                </button>
+                <button
+                  onClick={() => setShowCreateProjectModal(true)}
+                  className="ml-2 px-3 py-1 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 transition-colors duration-200"
+                >
+                  New Project
                 </button>
               </div>
+            </div>
+
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(4)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse flex flex-col space-y-3"
+                  >
+                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-6 bg-gray-200 rounded w-full"></div>
+                  </div>
+                ))}
+              </div>
+            ) : dashboardData.recentProjects &&
+              dashboardData.recentProjects.length > 0 ? (
+              <div className="overflow-hidden">
               <ul className="divide-y divide-gray-200">
                 {dashboardData.recentProjects.map((project) => (
-                  <li key={project.id} className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between flex-wrap">
-                      <div className="flex items-center w-full sm:w-auto mb-2 sm:mb-0">
-                        <div className="bg-indigo-100 rounded-md p-2 mr-4">
-                          <svg
-                            className="h-6 w-6 text-indigo-600"
+                    <li key={project.id} className="py-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {project.name}
+                          </p>
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <svg
+                              className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400"
                             xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
                           >
                             <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                fillRule="evenodd"
+                                d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                clipRule="evenodd"
                             />
                           </svg>
+                            <span>{project.team} team members</span>
                         </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {project.name}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            {project.team} team members
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center mt-2 sm:mt-0">
-                        <div className="mr-4 flex flex-col items-end">
-                          <div className="text-sm font-medium text-gray-900">
+                        <div className="flex-shrink-0 ml-5">
+                          <p className="text-sm font-medium text-gray-900">
                             {project.progress}%
+                          </p>
                           </div>
-                          <div className="w-24 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
+                      </div>
+                      <div className="mt-2">
+                        <div className="flex items-center">
+                          <div className="flex-1">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`${
                                 project.progress < 30
                                   ? "bg-red-500"
                                   : project.progress < 70
                                   ? "bg-yellow-500"
                                   : "bg-green-500"
-                              }`}
+                                } h-2 rounded-full`}
                               style={{ width: `${project.progress}%` }}
                             ></div>
                           </div>
                         </div>
-                        <button className="p-1 rounded-full text-gray-400 hover:text-gray-500">
-                          <svg
-                            className="h-6 w-6"
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64">
+                <svg
+                  className="h-16 w-16 text-gray-300 mb-4"
                             xmlns="http://www.w3.org/2000/svg"
                             fill="none"
                             viewBox="0 0 24 24"
@@ -703,22 +893,116 @@ const EmployerDashboard: React.FC = () => {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M9 5l7 7-7 7"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                             />
                           </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <div className="bg-gray-50 px-4 py-4 sm:px-6">
+                <p className="text-gray-500">No projects available yet</p>
                 <button
                   onClick={() => setShowCreateProjectModal(true)}
-                  className="w-full flex justify-center items-center text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 transition-colors duration-200"
                 >
-                  <svg
-                    className="mr-2 h-5 w-5"
+                  Create your first project
+                        </button>
+                      </div>
+            )}
+                    </div>
+        </div>
+      </main>
+
+      {/* Modal for Top Performer details */}
+      <Modal
+        isOpen={showTopPerformerModal}
+        onClose={() => setShowTopPerformerModal(false)}
+        title="Top Performer Details"
+      >
+        {loading ? (
+          <div className="animate-pulse flex flex-col items-center py-8">
+            <div className="w-24 h-24 bg-gray-200 rounded-full mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+            <div className="h-3 bg-gray-200 rounded w-1/4 mb-8"></div>
+            <div className="w-full h-4 bg-gray-200 rounded mb-2"></div>
+            <div className="w-full h-4 bg-gray-200 rounded mb-4"></div>
+            <div className="w-full h-32 bg-gray-200 rounded"></div>
+          </div>
+        ) : dashboardData.topPerformer ? (
+          <div className="py-8 flex flex-col items-center">
+            <img
+              className="h-24 w-24 rounded-full mb-4"
+              src={dashboardData.topPerformer.avatar}
+              alt={dashboardData.topPerformer.name}
+            />
+            <h4 className="text-xl font-semibold text-gray-900">
+              {dashboardData.topPerformer.name}
+            </h4>
+            <p className="text-sm text-gray-500 mb-4">
+              {dashboardData.topPerformer.title}
+            </p>
+
+            <div className="w-full max-w-md">
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <h5 className="text-sm font-medium text-gray-700 mb-3">
+                  Performance Metrics
+                </h5>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-500">
+                        Task Completion Rate
+                      </span>
+                      <span className="text-sm font-medium text-gray-700">
+                        {dashboardData.topPerformer.completionRate}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-green-600 h-2.5 rounded-full"
+                        style={{
+                          width: `${dashboardData.topPerformer.completionRate}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-white p-4 border border-gray-200 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {dashboardData.topPerformer.projects}
+                    </div>
+                    <div className="text-xs text-gray-500">Projects</div>
+                  </div>
+                </div>
+                <div className="bg-white p-4 border border-gray-200 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {/* This data would come from a real calculation */}
+                      {Math.round(
+                        (dashboardData.topPerformer.completionRate / 100) * 40
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">Tasks Completed</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-center">
+                <Link
+                  to={`/employer/employees/${dashboardData.topPerformer.name
+                    .replace(/\s+/g, "-")
+                    .toLowerCase()}`}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  View Full Profile
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="py-8 flex flex-col items-center">
+            <svg
+              className="h-20 w-20 text-gray-300 mb-4"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -728,17 +1012,28 @@ const EmployerDashboard: React.FC = () => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                     />
                   </svg>
-                  Create New Project
-                </button>
+            <h4 className="text-xl font-semibold text-gray-900">
+              No Top Performer Yet
+            </h4>
+            <p className="text-gray-500 mb-8 text-center">
+              Once your team completes more tasks, we'll identify your top
+              performer based on task completion, efficiency, and quality of
+              work.
+            </p>
+            <Link
+              to="/employer/employees"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              View All Employees
+            </Link>
               </div>
-            </div>
-          </div>
-        </div>
+        )}
+      </Modal>
 
-        {/* Modals */}
+      {/* Other modals remain the same */}
         <Modal
           isOpen={showEmployeesModal}
           onClose={() => setShowEmployeesModal(false)}
@@ -887,75 +1182,6 @@ const EmployerDashboard: React.FC = () => {
               >
                 Go to Tasks Page
               </Link>
-            </div>
-          </div>
-        </Modal>
-
-        <Modal
-          isOpen={showTopPerformerModal}
-          onClose={() => setShowTopPerformerModal(false)}
-          title="Employee Profile"
-          size="medium"
-          actions={
-            <button
-              onClick={() => setShowTopPerformerModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4 flex flex-col items-center">
-            <img
-              className="h-24 w-24 rounded-full mb-4"
-              src={dashboardData.topPerformer.avatar}
-              alt={dashboardData.topPerformer.name}
-            />
-            <h4 className="text-xl font-semibold text-gray-900">
-              {dashboardData.topPerformer.name}
-            </h4>
-            <p className="text-sm text-gray-500 mb-4">
-              {dashboardData.topPerformer.title}
-            </p>
-
-            <div className="mt-4 w-full max-w-md">
-              <div className="bg-gray-100 p-4 rounded-lg mb-4">
-                <h5 className="font-medium text-gray-900 mb-2">
-                  Performance Overview
-                </h5>
-                <div className="space-y-2">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">
-                        Completion Rate
-                      </span>
-                      <span className="text-sm font-medium text-gray-700">
-                        {dashboardData.topPerformer.completionRate}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div
-                        className="bg-green-600 h-2.5 rounded-full"
-                        style={{
-                          width: `${dashboardData.topPerformer.completionRate}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <Link
-                  to={`/employer/employees/${dashboardData.topPerformer.name
-                    .replace(/\s+/g, "-")
-                    .toLowerCase()}`}
-                  className="w-full inline-flex justify-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  onClick={() => setShowTopPerformerModal(false)}
-                >
-                  View Full Profile
-                </Link>
-              </div>
             </div>
           </div>
         </Modal>
@@ -1161,7 +1387,6 @@ const EmployerDashboard: React.FC = () => {
             </div>
           </div>
         </Modal>
-      </main>
     </div>
   );
 };

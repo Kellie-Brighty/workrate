@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from "react";
 import Modal from "../../components/Modal";
+import {
+  onTasksUpdate,
+  updateTask,
+  type TaskData,
+  createTask,
+  getProjects,
+  getEmployees,
+} from "../../services/firebase";
+import { useAuth } from "../../contexts/AuthContext";
 
 // Hook to detect screen size
 const useIsMobile = () => {
@@ -22,207 +31,6 @@ const useIsMobile = () => {
 
   return isMobile;
 };
-
-// Mock data for tasks
-const tasksData = [
-  {
-    id: 1,
-    title: "Research competitors",
-    description:
-      "Analyze top 5 competitors in the market and prepare a report on their features and pricing",
-    dueDate: "2023-11-25",
-    status: "Completed",
-    priority: "Medium",
-    assignee: {
-      id: 1,
-      name: "Jason Chen",
-      avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["research", "marketing"],
-    createdAt: "2023-10-15",
-  },
-  {
-    id: 2,
-    title: "Create wireframes",
-    description:
-      "Design wireframes for the homepage, product pages, and checkout flow",
-    dueDate: "2023-11-05",
-    status: "Completed",
-    priority: "High",
-    assignee: {
-      id: 1,
-      name: "Jason Chen",
-      avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["design", "wireframes"],
-    createdAt: "2023-10-18",
-  },
-  {
-    id: 3,
-    title: "Design homepage",
-    description:
-      "Create high-fidelity designs for the homepage based on approved wireframes",
-    dueDate: "2023-11-15",
-    status: "In Progress",
-    priority: "High",
-    assignee: {
-      id: 1,
-      name: "Jason Chen",
-      avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["design", "ui"],
-    createdAt: "2023-10-25",
-  },
-  {
-    id: 4,
-    title: "Implement responsive layout",
-    description:
-      "Develop responsive layout for all screen sizes following the design specifications",
-    dueDate: "2023-11-30",
-    status: "Not Started",
-    priority: "High",
-    assignee: {
-      id: 2,
-      name: "Sarah Johnson",
-      avatar: "https://randomuser.me/api/portraits/women/43.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["development", "responsive"],
-    createdAt: "2023-10-27",
-  },
-  {
-    id: 5,
-    title: "Create backend API",
-    description: "Develop RESTful API endpoints for the application",
-    dueDate: "2023-11-20",
-    status: "In Progress",
-    priority: "Medium",
-    assignee: {
-      id: 3,
-      name: "Michael Brown",
-      avatar: "https://randomuser.me/api/portraits/men/44.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["development", "backend"],
-    createdAt: "2023-10-22",
-  },
-  {
-    id: 6,
-    title: "Develop mobile app UI",
-    description:
-      "Design UI components for the iOS and Android mobile application",
-    dueDate: "2023-12-10",
-    status: "Not Started",
-    priority: "Medium",
-    assignee: {
-      id: 1,
-      name: "Jason Chen",
-      avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-    },
-    project: {
-      id: 2,
-      title: "Mobile App Development",
-    },
-    tags: ["design", "mobile"],
-    createdAt: "2023-11-01",
-  },
-  {
-    id: 7,
-    title: "Performance optimization",
-    description:
-      "Optimize website performance and achieve a 90+ score on PageSpeed Insights",
-    dueDate: "2023-12-20",
-    status: "Not Started",
-    priority: "Low",
-    assignee: {
-      id: 2,
-      name: "Sarah Johnson",
-      avatar: "https://randomuser.me/api/portraits/women/43.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["development", "performance"],
-    createdAt: "2023-11-05",
-  },
-  {
-    id: 8,
-    title: "CRM data migration",
-    description: "Migrate existing customer data to the new CRM system",
-    dueDate: "2023-11-30",
-    status: "In Progress",
-    priority: "High",
-    assignee: {
-      id: 3,
-      name: "Michael Brown",
-      avatar: "https://randomuser.me/api/portraits/men/44.jpg",
-    },
-    project: {
-      id: 3,
-      title: "CRM Integration",
-    },
-    tags: ["data", "migration"],
-    createdAt: "2023-10-20",
-  },
-  {
-    id: 9,
-    title: "User testing",
-    description:
-      "Conduct user testing sessions with 5-7 participants and gather feedback",
-    dueDate: "2023-12-15",
-    status: "Not Started",
-    priority: "Medium",
-    assignee: {
-      id: 4,
-      name: "Emily Davis",
-      avatar: "https://randomuser.me/api/portraits/women/45.jpg",
-    },
-    project: {
-      id: 1,
-      title: "Website Redesign",
-    },
-    tags: ["testing", "ux"],
-    createdAt: "2023-11-10",
-  },
-  {
-    id: 10,
-    title: "Set up analytics",
-    description: "Implement Google Analytics and set up custom event tracking",
-    dueDate: "2023-12-05",
-    status: "Not Started",
-    priority: "Low",
-    assignee: {
-      id: 4,
-      name: "Emily Davis",
-      avatar: "https://randomuser.me/api/portraits/women/45.jpg",
-    },
-    project: {
-      id: 4,
-      title: "Marketing Campaign",
-    },
-    tags: ["analytics", "marketing"],
-    createdAt: "2023-11-12",
-  },
-];
 
 // Status color mapping
 const getStatusColor = (status: string) => {
@@ -271,9 +79,15 @@ const getEffectiveStatus = (task: any) => {
 
 const Tasks: React.FC = () => {
   const isMobile = useIsMobile();
+  const { userData } = useAuth();
 
-  // Add state for tasks
-  const [tasks, setTasks] = useState(tasksData);
+  // Add state for tasks and loading
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
 
   // Add new states for modals and filters
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
@@ -289,6 +103,59 @@ const Tasks: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const tasksPerPage = 10;
 
+  // Set up Firebase real-time listener
+  useEffect(() => {
+    // Start loading
+    setLoading(true);
+
+    // Set up the listener for real-time updates
+    const unsubscribe = onTasksUpdate((updatedTasks) => {
+      setTasks(updatedTasks);
+      setLoading(false);
+    });
+
+    // Clean up the listener when the component unmounts
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Fetch projects for the dropdown
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setLoadingProjects(true);
+        const projectsList = await getProjects();
+        setProjects(projectsList);
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+      } finally {
+        setLoadingProjects(false);
+      }
+    };
+
+    fetchProjects();
+  }, []);
+
+  // Fetch employees for the dropdown
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      if (!userData) return;
+
+      try {
+        setLoadingEmployees(true);
+        const employeesList = await getEmployees(userData.id);
+        setEmployees(employeesList);
+      } catch (error) {
+        console.error("Error fetching employees:", error);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+
+    fetchEmployees();
+  }, [userData]);
+
   // Handle task click
   const handleTaskClick = (task: any) => {
     setSelectedTask(task);
@@ -303,16 +170,21 @@ const Tasks: React.FC = () => {
   };
 
   // Handle status change
-  const handleStatusChange = (taskId: number, newStatus: string) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === taskId ? { ...task, status: newStatus } : task
-      )
-    );
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    try {
+      // Update in Firebase
+      await updateTask(taskId, {
+        status: newStatus as TaskData["status"],
+      });
 
-    // If task detail modal is open, update selected task
-    if (selectedTask && selectedTask.id === taskId) {
-      setSelectedTask({ ...selectedTask, status: newStatus });
+      // Local state update is now handled by the onSnapshot listener
+
+      // If task detail modal is open, update selected task
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask({ ...selectedTask, status: newStatus });
+      }
+    } catch (error) {
+      console.error("Error updating task status:", error);
     }
   };
 
@@ -488,183 +360,176 @@ const Tasks: React.FC = () => {
         {/* Tasks Table */}
         <div className="bg-white shadow overflow-hidden sm:rounded-lg">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    scope="col"
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Task
-                  </th>
-                  <th
-                    scope="col"
-                    className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Project
-                  </th>
-                  <th
-                    scope="col"
-                    className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Assignee
-                  </th>
-                  <th
-                    scope="col"
-                    className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Due Date
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Status
-                  </th>
-                  <th
-                    scope="col"
-                    className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Priority
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {currentTasks.map((task) => {
-                  const effectiveStatus = getEffectiveStatus(task);
-                  return (
-                    <tr key={task.id} className="hover:bg-gray-50">
-                      <td className="px-4 sm:px-6 py-4 whitespace-normal sm:whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {task.title}
-                            </div>
-                            <div
-                              className="text-sm text-gray-500 line-clamp-1"
-                              title={task.description}
-                            >
-                              {task.description}
-                            </div>
-                            {/* Mobile-only project */}
-                            <div className="mt-1 sm:hidden text-xs text-gray-500">
-                              {task.project.title}
-                            </div>
-                            {/* Mobile-only assignee */}
-                            <div className="mt-1 sm:hidden flex items-center">
-                              <img
-                                className="h-5 w-5 rounded-full mr-1"
-                                src={task.assignee.avatar}
-                                alt={task.assignee.name}
-                              />
-                              <span className="text-xs text-gray-500">
-                                {task.assignee.name}
-                              </span>
-                            </div>
-                            {/* Mobile-only due date */}
-                            <div className="mt-1 sm:hidden text-xs text-gray-500">
-                              Due: {new Date(task.dueDate).toLocaleDateString()}
-                              {isTaskOverdue(task) && (
-                                <span className="ml-1 text-xs text-red-500">
-                                  (Overdue)
-                                </span>
-                              )}
-                            </div>
-                            {/* Mobile-only priority */}
-                            <div className="mt-1 sm:hidden">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(
-                                  task.priority
-                                )}`}
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+              </div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th
+                      scope="col"
+                      className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Task
+                    </th>
+                    <th
+                      scope="col"
+                      className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Project
+                    </th>
+                    <th
+                      scope="col"
+                      className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Assignee
+                    </th>
+                    <th
+                      scope="col"
+                      className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Due Date
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      scope="col"
+                      className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Priority
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {currentTasks.map((task) => {
+                    const effectiveStatus = getEffectiveStatus(task);
+
+                    // Get assignee and project info or provide defaults
+                    const assigneeName = task.assignee?.name || "Unassigned";
+                    const assigneeAvatar =
+                      task.assignee?.avatar ||
+                      "https://randomuser.me/api/portraits/lego/1.jpg";
+                    const projectTitle = task.project?.title || "No Project";
+
+                    return (
+                      <tr
+                        key={task.id}
+                        className="hover:bg-gray-50"
+                        onClick={() => handleTaskClick(task)}
+                      >
+                        <td className="px-4 sm:px-6 py-4 whitespace-normal sm:whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {task.title}
+                              </div>
+                              <div
+                                className="text-sm text-gray-500 line-clamp-1"
+                                title={task.description}
                               >
-                                {task.priority}
-                              </span>
-                            </div>
-                            <div className="mt-1 hidden sm:flex flex-wrap gap-1">
-                              {task.tags.map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800"
-                                >
-                                  {tag}
+                                {task.description}
+                              </div>
+                              {/* Mobile-only project */}
+                              <div className="mt-1 sm:hidden text-xs text-gray-500">
+                                {projectTitle}
+                              </div>
+                              {/* Mobile-only assignee */}
+                              <div className="mt-1 sm:hidden flex items-center">
+                                <img
+                                  className="h-5 w-5 rounded-full mr-1"
+                                  src={assigneeAvatar}
+                                  alt={assigneeName}
+                                />
+                                <span className="text-xs text-gray-500">
+                                  {assigneeName}
                                 </span>
-                              ))}
+                              </div>
+                              {/* Mobile-only due date */}
+                              <div className="mt-1 sm:hidden text-xs text-gray-500">
+                                Due{" "}
+                                {new Date(task.dueDate).toLocaleDateString()}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {task.project.title}
-                        </div>
-                      </td>
-                      <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-8 w-8">
-                            <img
-                              className="h-8 w-8 rounded-full"
-                              src={task.assignee.avatar}
-                              alt={task.assignee.name}
-                            />
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {projectTitle}
                           </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {task.assignee.name}
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-8 w-8">
+                              <img
+                                className="h-8 w-8 rounded-full"
+                                src={assigneeAvatar}
+                                alt={assigneeName}
+                              />
+                            </div>
+                            <div className="ml-3">
+                              <div className="text-sm font-medium text-gray-900">
+                                {assigneeName}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {new Date(task.dueDate).toLocaleDateString()}
-                        </div>
-                        {isTaskOverdue(task) && (
-                          <div className="text-xs text-red-500">Overdue</div>
-                        )}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                            effectiveStatus
-                          )}`}
-                        >
-                          {effectiveStatus}
-                        </span>
-                      </td>
-                      <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(
-                            task.priority
-                          )}`}
-                        >
-                          {task.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleTaskClick(task)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-3"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={(e) => handleEditTask(task, e)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-3"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {new Date(task.dueDate).toLocaleDateString()}
+                          </div>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                          <select
+                            value={effectiveStatus}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleStatusChange(task.id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`text-xs inline-flex py-1 px-2 rounded-full ${getStatusColor(
+                              effectiveStatus
+                            )} border-0 focus:ring-2 focus:ring-indigo-500`}
+                          >
+                            <option value="Not Started">Not Started</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPriorityColor(
+                              task.priority
+                            )}`}
+                          >
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            onClick={(e) => handleEditTask(task, e)}
+                            className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* Pagination */}
@@ -871,9 +736,41 @@ const Tasks: React.FC = () => {
             </button>
             <button
               className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => {
-                // In a real app, this would save task changes
-                setShowTaskDetailModal(false);
+              onClick={async () => {
+                if (!selectedTask) return;
+
+                try {
+                  // Get values from form
+                  const titleElement = document.getElementById(
+                    "task-detail-title"
+                  ) as HTMLInputElement;
+                  const descriptionElement = document.getElementById(
+                    "task-detail-description"
+                  ) as HTMLTextAreaElement;
+                  const priorityElement = document.getElementById(
+                    "task-detail-priority"
+                  ) as HTMLSelectElement;
+                  const statusElement = document.getElementById(
+                    "task-detail-status"
+                  ) as HTMLSelectElement;
+                  const dueDateElement = document.getElementById(
+                    "task-detail-due-date"
+                  ) as HTMLInputElement;
+
+                  // Update the task in Firebase
+                  await updateTask(selectedTask.id, {
+                    title: titleElement.value,
+                    description: descriptionElement.value,
+                    priority: priorityElement.value as TaskData["priority"],
+                    status: statusElement.value as TaskData["status"],
+                    dueDate: dueDateElement.value,
+                  });
+
+                  // Close the modal
+                  setShowTaskDetailModal(false);
+                } catch (error) {
+                  console.error("Error updating task:", error);
+                }
               }}
             >
               Save Changes
@@ -922,7 +819,7 @@ const Tasks: React.FC = () => {
                 <input
                   type="text"
                   id="task-detail-assignee"
-                  defaultValue={selectedTask.assignee.name}
+                  defaultValue={selectedTask.assignee?.name || "Unassigned"}
                   readOnly
                   className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
                 />
@@ -991,20 +888,27 @@ const Tasks: React.FC = () => {
               <input
                 type="text"
                 id="task-detail-project"
-                defaultValue={selectedTask.project.title}
+                defaultValue={selectedTask.project?.title || "No Project"}
                 readOnly
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Created At
-              </label>
-              <div className="mt-1 text-sm text-gray-500">
-                {new Date(selectedTask.createdAt).toLocaleDateString()} at{" "}
-                {new Date(selectedTask.createdAt).toLocaleTimeString()}
+            {selectedTask.createdAt && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Created At
+                </label>
+                <div className="mt-1 text-sm text-gray-500">
+                  {new Date(
+                    selectedTask.createdAt.seconds * 1000
+                  ).toLocaleDateString()}{" "}
+                  at{" "}
+                  {new Date(
+                    selectedTask.createdAt.seconds * 1000
+                  ).toLocaleTimeString()}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1025,9 +929,41 @@ const Tasks: React.FC = () => {
             </button>
             <button
               className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => {
-                // In a real app, would update the task
-                setShowEditTaskModal(false);
+              onClick={async () => {
+                if (!selectedTask) return;
+
+                try {
+                  // Get values from form
+                  const titleElement = document.getElementById(
+                    "edit-task-title"
+                  ) as HTMLInputElement;
+                  const descriptionElement = document.getElementById(
+                    "edit-task-description"
+                  ) as HTMLTextAreaElement;
+                  const priorityElement = document.getElementById(
+                    "edit-task-priority"
+                  ) as HTMLSelectElement;
+                  const statusElement = document.getElementById(
+                    "edit-task-status"
+                  ) as HTMLSelectElement;
+                  const dueDateElement = document.getElementById(
+                    "edit-task-due-date"
+                  ) as HTMLInputElement;
+
+                  // Update the task in Firebase
+                  await updateTask(selectedTask.id, {
+                    title: titleElement.value,
+                    description: descriptionElement.value,
+                    priority: priorityElement.value as TaskData["priority"],
+                    status: statusElement.value as TaskData["status"],
+                    dueDate: dueDateElement.value,
+                  });
+
+                  // Close the modal
+                  setShowEditTaskModal(false);
+                } catch (error) {
+                  console.error("Error updating task:", error);
+                }
               }}
             >
               Save Changes
@@ -1173,9 +1109,46 @@ const Tasks: React.FC = () => {
             </button>
             <button
               className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => {
-                // In a real app, would add the task to the list
-                setShowAddTaskModal(false);
+              onClick={async () => {
+                if (!userData) return;
+
+                try {
+                  // Get values from form
+                  const titleElement = document.getElementById(
+                    "new-task-title"
+                  ) as HTMLInputElement;
+                  const descriptionElement = document.getElementById(
+                    "new-task-description"
+                  ) as HTMLTextAreaElement;
+                  const priorityElement = document.getElementById(
+                    "new-task-priority"
+                  ) as HTMLSelectElement;
+                  const statusElement = document.getElementById(
+                    "new-task-status"
+                  ) as HTMLSelectElement;
+                  const dueDateElement = document.getElementById(
+                    "new-task-due-date"
+                  ) as HTMLInputElement;
+                  const projectElement = document.getElementById(
+                    "new-task-project"
+                  ) as HTMLSelectElement;
+
+                  // Create new task in Firebase
+                  await createTask({
+                    title: titleElement.value,
+                    description: descriptionElement.value,
+                    priority: priorityElement.value as TaskData["priority"],
+                    status: statusElement.value as TaskData["status"],
+                    dueDate: dueDateElement.value,
+                    projectId: projectElement.value,
+                    createdBy: userData.id,
+                  });
+
+                  // Close the modal
+                  setShowAddTaskModal(false);
+                } catch (error) {
+                  console.error("Error adding new task:", error);
+                }
               }}
             >
               Add Task
@@ -1223,10 +1196,17 @@ const Tasks: React.FC = () => {
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
               >
                 <option value="">Select Assignee</option>
-                <option value="Jason Chen">Jason Chen</option>
-                <option value="Sarah Johnson">Sarah Johnson</option>
-                <option value="Michael Brown">Michael Brown</option>
-                <option value="Emily Davis">Emily Davis</option>
+                {loadingEmployees ? (
+                  <option value="" disabled>
+                    Loading employees...
+                  </option>
+                ) : (
+                  employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
             <div>
@@ -1289,10 +1269,17 @@ const Tasks: React.FC = () => {
               className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
             >
               <option value="">Select Project</option>
-              <option value="1">Website Redesign</option>
-              <option value="2">Mobile App Development</option>
-              <option value="3">CRM Integration</option>
-              <option value="4">Marketing Campaign</option>
+              {loadingProjects ? (
+                <option value="" disabled>
+                  Loading projects...
+                </option>
+              ) : (
+                projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>

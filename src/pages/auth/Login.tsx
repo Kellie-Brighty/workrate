@@ -1,13 +1,35 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  useErrorNotification,
+  useSuccessNotification,
+} from "../../contexts/NotificationContext";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { login, signInWithGoogle, setError, userData, currentUser } =
+    useAuth();
+  const [loading, setLoading] = useState(false);
+  const showError = useErrorNotification();
+  const showSuccess = useSuccessNotification();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   });
+
+  // Effect to navigate when userData is loaded
+  useEffect(() => {
+    if (currentUser && userData) {
+      // Navigate based on user type
+      if (userData.userType === "employer") {
+        navigate("/employer/dashboard");
+      } else {
+        navigate("/employee/dashboard");
+      }
+    }
+  }, [userData, currentUser, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value =
@@ -18,11 +40,66 @@ const Login: React.FC = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Login form submitted:", formData);
-    // Navigate to employer dashboard after form submission
-    navigate("/employer/dashboard");
+
+    if (!formData.email || !formData.password) {
+      setError(null);
+      showError("Sign in needed", "Please enter your email and password");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Call Firebase login
+      await login(formData.email, formData.password);
+      showSuccess("Login Successful", "You have been logged in successfully");
+
+      // Store rememberMe preference if needed
+      if (formData.rememberMe) {
+        localStorage.setItem("rememberMe", formData.email);
+      } else {
+        localStorage.removeItem("rememberMe");
+      }
+
+      // Navigation will happen in the useEffect when userData is available
+    } catch (err) {
+      console.error("Login error:", err);
+      // Display error notification here since we removed it from AuthContext
+      showError(
+        "Login Failed",
+        err instanceof Error ? err.message : "Failed to login"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Call Firebase Google login
+      await signInWithGoogle();
+      showSuccess(
+        "Login Successful",
+        "You have been logged in with Google successfully"
+      );
+
+      // Navigation will happen in the useEffect when userData is available
+    } catch (err) {
+      console.error("Google login error:", err);
+      // Display error notification here since we removed it from AuthContext
+      showError(
+        "Login Failed",
+        err instanceof Error ? err.message : "Failed to login with Google"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -191,26 +268,94 @@ const Login: React.FC = () => {
                 className="animate-pulse"
                 style={{ animationDuration: "6s" }}
               />
-              
+
               {/* Simplified elements for mobile */}
               <g className="animate-bounce" style={{ animationDuration: "3s" }}>
-                <rect x="95" y="70" width="60" height="40" rx="5" fill="#4F46E5" />
-                <rect x="105" y="80" width="40" height="5" rx="2" fill="white" />
-                <rect x="105" y="90" width="40" height="5" rx="2" fill="white" />
-                <rect x="105" y="100" width="25" height="5" rx="2" fill="white" />
+                <rect
+                  x="95"
+                  y="70"
+                  width="60"
+                  height="40"
+                  rx="5"
+                  fill="#4F46E5"
+                />
+                <rect
+                  x="105"
+                  y="80"
+                  width="40"
+                  height="5"
+                  rx="2"
+                  fill="white"
+                />
+                <rect
+                  x="105"
+                  y="90"
+                  width="40"
+                  height="5"
+                  rx="2"
+                  fill="white"
+                />
+                <rect
+                  x="105"
+                  y="100"
+                  width="25"
+                  height="5"
+                  rx="2"
+                  fill="white"
+                />
               </g>
-              
+
               {/* Person icon - simplified */}
-              <circle cx="125" cy="45" r="15" fill="#818CF8" className="animate-pulse" style={{ animationDuration: "4s" }} />
-              <path d="M115 60 L135 60 L140 90 L110 90 Z" fill="#4F46E5" className="animate-pulse" style={{ animationDuration: "4s" }} />
-              
+              <circle
+                cx="125"
+                cy="45"
+                r="15"
+                fill="#818CF8"
+                className="animate-pulse"
+                style={{ animationDuration: "4s" }}
+              />
+              <path
+                d="M115 60 L135 60 L140 90 L110 90 Z"
+                fill="#4F46E5"
+                className="animate-pulse"
+                style={{ animationDuration: "4s" }}
+              />
+
               {/* Small floating elements */}
-              <circle cx="165" cy="50" r="6" fill="#818CF8" className="animate-ping" style={{ animationDuration: "3s" }} />
-              <circle cx="85" cy="60" r="4" fill="#4F46E5" className="animate-ping" style={{ animationDuration: "2s" }} />
-              <circle cx="175" cy="110" r="5" fill="#4F46E5" className="animate-ping" style={{ animationDuration: "4s" }} />
-              <circle cx="75" cy="120" r="3" fill="#818CF8" className="animate-ping" style={{ animationDuration: "5s" }} />
+              <circle
+                cx="165"
+                cy="50"
+                r="6"
+                fill="#818CF8"
+                className="animate-ping"
+                style={{ animationDuration: "3s" }}
+              />
+              <circle
+                cx="85"
+                cy="60"
+                r="4"
+                fill="#4F46E5"
+                className="animate-ping"
+                style={{ animationDuration: "2s" }}
+              />
+              <circle
+                cx="175"
+                cy="110"
+                r="5"
+                fill="#4F46E5"
+                className="animate-ping"
+                style={{ animationDuration: "4s" }}
+              />
+              <circle
+                cx="75"
+                cy="120"
+                r="3"
+                fill="#818CF8"
+                className="animate-ping"
+                style={{ animationDuration: "5s" }}
+              />
             </svg>
-            
+
             <div className="text-center">
               <h2 className="text-xl font-bold text-indigo-700">
                 Welcome to WorkRate
@@ -331,9 +476,12 @@ const Login: React.FC = () => {
             <div>
               <button
                 type="submit"
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
+                disabled={loading}
+                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200 ${
+                  loading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                Sign in
+                {loading ? "Signing in..." : "Sign in"}
               </button>
             </div>
           </form>
@@ -351,9 +499,13 @@ const Login: React.FC = () => {
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <a
-                href="#"
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors duration-200"
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className={`w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors duration-200 ${
+                  loading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
                 <svg
                   className="w-5 h-5"
@@ -363,7 +515,7 @@ const Login: React.FC = () => {
                 >
                   <path d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972-3.332 0-6.033-2.701-6.033-6.032s2.701-6.032 6.033-6.032c1.498 0 2.866.549 3.921 1.453l2.814-2.814C17.503 2.988 15.139 2 12.545 2 7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.748l-9.426-.013z" />
                 </svg>
-              </a>
+              </button>
 
               <a
                 href="#"
