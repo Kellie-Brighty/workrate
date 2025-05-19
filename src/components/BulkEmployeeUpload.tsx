@@ -21,6 +21,8 @@ interface EmployeeData {
   joinDate?: string;
   avatar?: string;
   employerId?: string;
+  tempPassword?: string;
+  accountCreated?: boolean;
 }
 
 interface BulkEmployeeUploadProps {

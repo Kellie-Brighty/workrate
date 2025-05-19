@@ -36,7 +36,7 @@ const getStatusColor = (status: string) => {
     case "in progress":
       return "bg-blue-100 text-blue-800";
     case "not started":
-      return "bg-gray-100 text-gray-800";
+      return "bg-yellow-50 text-yellow-700";
     default:
       return "bg-gray-100 text-gray-800";
   }

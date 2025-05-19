@@ -1,310 +1,58 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Modal from "../../components/Modal";
+import { useAuth } from "../../contexts/AuthContext";
 
-// Mock project data
-const MOCK_PROJECTS = [
-  {
-    id: 1,
-    name: "Website Redesign",
-    description:
-      "Redesign the company website with improved UI/UX and responsive design",
-    client: "Acme Corporation",
-    status: "In Progress",
-    completion: 65,
-    startDate: "2023-10-01",
-    deadline: "2023-12-15",
-    manager: {
-      id: 1,
-      name: "John Manager",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    },
-    team: [
-      {
-        id: 1,
-        name: "Jane Developer",
-        avatar: "https://randomuser.me/api/portraits/women/1.jpg",
-      },
-      {
-        id: 2,
-        name: "Bob Designer",
-        avatar: "https://randomuser.me/api/portraits/men/2.jpg",
-      },
-      {
-        id: 3,
-        name: "Alice Content",
-        avatar: "https://randomuser.me/api/portraits/women/3.jpg",
-      },
-      {
-        id: 4,
-        name: "Current User",
-        avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-      },
-    ],
-    tasks: [
-      {
-        id: 1,
-        title: "Design new landing page mockups",
-        status: "In Progress",
-        assigned: true,
-      },
-      {
-        id: 2,
-        title: "Implement responsive navigation",
-        status: "To Do",
-        assigned: true,
-      },
-      {
-        id: 3,
-        title: "Create product showcase section",
-        status: "Completed",
-        assigned: true,
-      },
-      {
-        id: 4,
-        title: "Optimize images and assets",
-        status: "To Do",
-        assigned: false,
-      },
-    ],
-    recentUpdates: [
-      {
-        id: 1,
-        user: "John Manager",
-        action: "updated the project deadline",
-        time: "2 days ago",
-      },
-      {
-        id: 2,
-        user: "Alice Content",
-        action: "completed the About Us page content",
-        time: "3 days ago",
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "User Authentication",
-    description:
-      "Implement secure authentication system with social login options",
-    client: "Internal",
-    status: "In Progress",
-    completion: 40,
-    startDate: "2023-10-15",
-    deadline: "2023-11-30",
-    manager: {
-      id: 1,
-      name: "John Manager",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    },
-    team: [
-      {
-        id: 5,
-        name: "Charlie Backend",
-        avatar: "https://randomuser.me/api/portraits/men/5.jpg",
-      },
-      {
-        id: 6,
-        name: "Diana Security",
-        avatar: "https://randomuser.me/api/portraits/women/6.jpg",
-      },
-      {
-        id: 4,
-        name: "Current User",
-        avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-      },
-    ],
-    tasks: [
-      {
-        id: 5,
-        title: "Implement authentication API",
-        status: "To Do",
-        assigned: true,
-      },
-      {
-        id: 6,
-        title: "Create login/signup forms",
-        status: "In Progress",
-        assigned: true,
-      },
-      {
-        id: 7,
-        title: "Integrate with Google OAuth",
-        status: "To Do",
-        assigned: false,
-      },
-      {
-        id: 8,
-        title: "Update user documentation",
-        status: "Completed",
-        assigned: true,
-      },
-    ],
-    recentUpdates: [
-      {
-        id: 3,
-        user: "Diana Security",
-        action: "added password reset functionality",
-        time: "1 day ago",
-      },
-      {
-        id: 4,
-        user: "Charlie Backend",
-        action: "updated API documentation",
-        time: "4 days ago",
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "E-commerce Platform",
-    description:
-      "Build a new e-commerce platform with catalog, cart, and checkout functionality",
-    client: "Fashion Outlet",
-    status: "At Risk",
-    completion: 25,
-    startDate: "2023-09-15",
-    deadline: "2023-12-01",
-    manager: {
-      id: 2,
-      name: "Sarah Director",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    },
-    team: [
-      {
-        id: 7,
-        name: "Frank Frontend",
-        avatar: "https://randomuser.me/api/portraits/men/7.jpg",
-      },
-      {
-        id: 8,
-        name: "Grace Data",
-        avatar: "https://randomuser.me/api/portraits/women/8.jpg",
-      },
-      {
-        id: 4,
-        name: "Current User",
-        avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-      },
-      {
-        id: 9,
-        name: "Henry QA",
-        avatar: "https://randomuser.me/api/portraits/men/9.jpg",
-      },
-    ],
-    tasks: [
-      {
-        id: 9,
-        title: "Implement product search",
-        status: "In Progress",
-        assigned: false,
-      },
-      {
-        id: 10,
-        title: "Create cart functionality",
-        status: "In Progress",
-        assigned: false,
-      },
-      {
-        id: 11,
-        title: "Fix checkout page bugs",
-        status: "To Do",
-        assigned: true,
-      },
-      {
-        id: 12,
-        title: "Integrate payment processor",
-        status: "To Do",
-        assigned: false,
-      },
-    ],
-    recentUpdates: [
-      {
-        id: 5,
-        user: "Sarah Director",
-        action: "raised risk level due to payment integration issues",
-        time: "12 hours ago",
-      },
-      {
-        id: 6,
-        user: "Henry QA",
-        action: "reported bugs in the checkout process",
-        time: "2 days ago",
-      },
-    ],
-  },
-  {
-    id: 4,
-    name: "Market Research",
-    description:
-      "Conduct competitor analysis and identify market opportunities",
-    client: "Internal",
-    status: "On Track",
-    completion: 50,
-    startDate: "2023-11-01",
-    deadline: "2023-12-15",
-    manager: {
-      id: 2,
-      name: "Sarah Director",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    },
-    team: [
-      {
-        id: 10,
-        name: "Irene Analyst",
-        avatar: "https://randomuser.me/api/portraits/women/10.jpg",
-      },
-      {
-        id: 4,
-        name: "Current User",
-        avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-      },
-      {
-        id: 11,
-        name: "Jack Marketing",
-        avatar: "https://randomuser.me/api/portraits/men/11.jpg",
-      },
-    ],
-    tasks: [
-      {
-        id: 13,
-        title: "Research competitor features",
-        status: "In Progress",
-        assigned: true,
-      },
-      {
-        id: 14,
-        title: "Analyze market trends",
-        status: "To Do",
-        assigned: false,
-      },
-      {
-        id: 15,
-        title: "Prepare presentation",
-        status: "To Do",
-        assigned: true,
-      },
-    ],
-    recentUpdates: [
-      {
-        id: 7,
-        user: "Jack Marketing",
-        action: "added new competitors to the analysis",
-        time: "3 days ago",
-      },
-      {
-        id: 8,
-        user: "Sarah Director",
-        action: "scheduled the final presentation",
-        time: "5 days ago",
-      },
-    ],
-  },
-];
+// Define types for better type safety
+interface ProjectMember {
+  id: string;
+  name: string;
+  avatar: string;
+}
+
+interface ProjectTask {
+  id: string;
+  title: string;
+  status: string;
+  assigned: boolean;
+  projectId?: string;
+}
+
+interface ProjectUpdate {
+  id: string;
+  user: string;
+  action: string;
+  time: string;
+}
+
+interface ProjectData {
+  id: string | number;
+  name: string;
+  description: string;
+  client: string;
+  status: string;
+  completion: number;
+  startDate: string;
+  deadline: string;
+  manager: {
+    id: string | number;
+    name: string;
+    avatar: string;
+  };
+  team: ProjectMember[];
+  tasks: ProjectTask[];
+  recentUpdates: ProjectUpdate[];
+  daysLeft?: number;
+}
 
 const Projects = () => {
-  const [projects, setProjects] = useState(MOCK_PROJECTS);
-  const [selectedProject, setSelectedProject] = useState<any | null>(null);
+  const { userData } = useAuth();
+  const [projects, setProjects] = useState<ProjectData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectData | null>(
+    null
+  );
   const [showProjectDetails, setShowProjectDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -312,13 +60,282 @@ const Projects = () => {
   // Modal states for various project actions
   const [showStatusChangeModal, setShowStatusChangeModal] = useState(false);
   const [statusChangeInfo, setStatusChangeInfo] = useState<{
-    projectId: number;
+    projectId: string | number;
     projectName: string;
     currentStatus: string;
     newStatus: string;
   } | null>(null);
   const [showLeaveProjectModal, setShowLeaveProjectModal] = useState(false);
-  const [projectToLeave, setProjectToLeave] = useState<any | null>(null);
+  const [projectToLeave, setProjectToLeave] = useState<ProjectData | null>(
+    null
+  );
+
+  // Set up real-time listener for projects
+  useEffect(() => {
+    if (!userData?.email) return;
+
+    // First get the employee data to make sure we have the correct employee ID
+    setLoading(true);
+    setError(null);
+
+    const fetchEmployeeAndProjects = async () => {
+      try {
+        // First get the employee document using the user's email
+        const {
+          getEmployeeByEmail,
+          onEmployeeProjectsUpdate,
+          getEmployeeTasks,
+        } = await import("../../services/firebase");
+        const employeeData = await getEmployeeByEmail(userData.email);
+
+        if (!employeeData) {
+          console.error(
+            "Could not find employee record for email:",
+            userData.email
+          );
+          setError(
+            "Could not find your employee record. Please contact your employer."
+          );
+          setLoading(false);
+          return;
+        }
+
+        const employeeId = employeeData.id;
+        console.log("Found employee record with ID:", employeeId);
+
+        // Get tasks for this employee first
+        const employeeTasks = await getEmployeeTasks(employeeId);
+        // Create a map of project IDs to tasks
+        const tasksByProject: Record<string, any[]> = {};
+
+        // Group tasks by project ID
+        employeeTasks.forEach((task: any) => {
+          const projectId = task.projectId;
+          if (!projectId) return;
+
+          if (!tasksByProject[projectId]) {
+            tasksByProject[projectId] = [];
+          }
+          tasksByProject[projectId].push(task);
+        });
+
+        console.log(
+          "Retrieved tasks by project:",
+          Object.keys(tasksByProject).length,
+          "Total tasks:",
+          employeeTasks.length
+        );
+
+        // Now set up the real-time listener for projects using the correct employee ID
+        const unsubscribeProjects = onEmployeeProjectsUpdate(
+          (updatedProjects) => {
+            console.log("Real-time projects update received:", updatedProjects);
+
+            if (
+              !Array.isArray(updatedProjects) ||
+              updatedProjects.length === 0
+            ) {
+              console.log(
+                "No projects found for this employee or invalid data format"
+              );
+              setProjects([]);
+              setLoading(false);
+              return;
+            }
+
+            // Format project data to match the expected structure
+            const formattedProjects = updatedProjects
+              .map((project: any) => {
+                if (!project || typeof project !== "object") {
+                  console.error("Invalid project data:", project);
+                  return null;
+                }
+
+                // Calculate days left
+                const daysLeft = calculateDaysLeft(project.endDate);
+
+                console.log("Processing project:", project.id, project.name);
+
+                // Try to extract team data correctly
+                let teamMembers = [];
+                if (Array.isArray(project.teamMembers)) {
+                  teamMembers = project.teamMembers;
+                  console.log("Using teamMembers array:", teamMembers.length);
+                } else if (Array.isArray(project.team)) {
+                  teamMembers = project.team;
+                  console.log("Using team array:", teamMembers.length);
+                } else {
+                  console.log("No team data found, using empty array");
+                  teamMembers = [];
+                }
+
+                // Get tasks for this project
+                const projectTasks = tasksByProject[project.id] || [];
+                console.log(
+                  `Project ${project.id} has ${projectTasks.length} tasks`
+                );
+
+                return {
+                  id: project.id,
+                  name: project.name || "Unnamed Project",
+                  description: project.description || "No description",
+                  client: project.client || "Internal",
+                  status: project.status || "In Progress",
+                  completion: project.progress || 0,
+                  startDate:
+                    project.startDate || new Date().toISOString().split("T")[0],
+                  deadline:
+                    project.endDate || new Date().toISOString().split("T")[0],
+                  // Use existing manager or placeholder
+                  manager: project.manager || {
+                    id: 1,
+                    name: "Project Manager",
+                    avatar: "https://randomuser.me/api/portraits/men/1.jpg",
+                  },
+                  // Use team data if available or placeholder - more flexible handling
+                  team: teamMembers.map((member: any) => ({
+                    id: member.id || Math.random().toString(),
+                    name: member.name || member.fullName || "Team Member",
+                    avatar:
+                      member.avatar ||
+                      "https://randomuser.me/api/portraits/men/1.jpg",
+                  })),
+                  // Use real task data instead of mock data
+                  tasks: projectTasks.map((task: any) => ({
+                    id: task.id,
+                    title: task.title,
+                    status: task.status || "To Do",
+                    assigned: true,
+                  })),
+                  recentUpdates: Array.isArray(project.activities)
+                    ? project.activities.map((activity: any) => ({
+                        id: activity.id || Math.random().toString(),
+                        user:
+                          activity.userName || activity.user || "Team Member",
+                        action: activity.action || "updated the project",
+                        time:
+                          activity.time ||
+                          formatActivityTime(activity.timestamp?.toDate()),
+                      }))
+                    : [],
+                  daysLeft,
+                };
+              })
+              .filter(Boolean) as ProjectData[]; // Remove any null entries and cast to correct type
+
+            console.log("Formatted projects:", formattedProjects.length);
+            setProjects(formattedProjects);
+            setLoading(false);
+          },
+          employeeId
+        );
+
+        return () => {
+          console.log("Cleaning up projects listener");
+          unsubscribeProjects();
+        };
+      } catch (err) {
+        console.error("Error setting up projects listener:", err);
+        setError((err as Error).message || "Error loading projects");
+        setLoading(false);
+        return () => {}; // Empty cleanup function for error case
+      }
+    };
+
+    // Start the fetch process and store the cleanup function
+    const cleanupPromise = fetchEmployeeAndProjects();
+
+    // Return a cleanup function
+    return () => {
+      cleanupPromise.then((cleanup) => cleanup && cleanup());
+    };
+  }, [userData?.id, userData?.email]);
+
+  // When a project is selected, fetch additional data
+  useEffect(() => {
+    if (!selectedProject?.id || !userData?.email) return;
+
+    // Fetch tasks for this project
+    const fetchProjectDetails = async () => {
+      try {
+        // First get the employee data to ensure we have the right ID
+        const { getEmployeeByEmail, getEmployeeTasks, getProjectActivities } =
+          await import("../../services/firebase");
+        const employeeData = await getEmployeeByEmail(userData.email);
+
+        if (!employeeData) {
+          console.error(
+            "Could not find employee record for email:",
+            userData.email
+          );
+          return;
+        }
+
+        const employeeId = employeeData.id;
+        console.log("Fetching tasks for employee ID:", employeeId);
+
+        // Get tasks for this project assigned to this employee
+        const tasksResponse = await getEmployeeTasks(employeeId);
+        const projectTasks = tasksResponse
+          .filter((task: any) => task.projectId === selectedProject.id)
+          .map((task: any) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status || "To Do",
+            assigned: true, // Since these are tasks assigned to the current employee
+            projectId: task.projectId,
+          }));
+
+        console.log(
+          `Found ${projectTasks.length} tasks for project ${selectedProject.id}`
+        );
+
+        // Get recent updates/activities
+        const activitiesResponse = await getProjectActivities(
+          selectedProject.id.toString()
+        );
+        const recentActivities = activitiesResponse.map((activity: any) => ({
+          id: activity.id || Math.random().toString(),
+          user: activity.userName || activity.user || "Team Member",
+          action: activity.action || "took an action",
+          time: formatActivityTime(activity.timestamp?.toDate()),
+        }));
+
+        // Update selected project with fetched data
+        setSelectedProject((prevProject: any) => ({
+          ...prevProject,
+          tasks: [
+            ...projectTasks,
+            ...(prevProject.tasks || []).filter((t: any) => !t.assigned),
+          ],
+          recentUpdates: recentActivities,
+        }));
+      } catch (error) {
+        console.error("Error fetching project details:", error);
+      }
+    };
+
+    fetchProjectDetails();
+  }, [selectedProject?.id, userData?.email]);
+
+  // Format timestamp to relative time
+  const formatActivityTime = (date?: Date) => {
+    if (!date) return "recently";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    const diffHours = Math.round(diffMs / 3600000);
+    const diffDays = Math.round(diffMs / 86400000);
+
+    if (diffMins < 60) {
+      return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+    } else {
+      return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+    }
+  };
 
   // Apply filters to projects
   const filteredProjects = projects.filter((project) => {
@@ -345,7 +362,7 @@ const Projects = () => {
   ];
 
   // Open project details
-  const handleOpenProjectDetails = (project: any) => {
+  const handleOpenProjectDetails = (project: ProjectData) => {
     setSelectedProject(project);
     setShowProjectDetails(true);
   };
@@ -356,7 +373,10 @@ const Projects = () => {
   };
 
   // Handle project status change
-  const handleStatusChange = (projectId: number, newStatus: string) => {
+  const handleStatusChange = (
+    projectId: string | number,
+    newStatus: string
+  ) => {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setStatusChangeInfo({
@@ -396,7 +416,7 @@ const Projects = () => {
   };
 
   // Handle leave project
-  const handleLeaveProject = (project: any) => {
+  const handleLeaveProject = (project: ProjectData) => {
     setProjectToLeave(project);
     setShowLeaveProjectModal(true);
   };
@@ -494,120 +514,179 @@ const Projects = () => {
         </div>
       </div>
 
-      {/* Projects grid - Made responsive for different screen sizes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredProjects.map((project) => (
-          <div
-            key={project.id}
-            className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => handleOpenProjectDetails(project)}
+      {/* Loading state */}
+      {loading && (
+        <div className="flex justify-center items-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && !loading && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-red-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                Error loading projects
+              </h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && filteredProjects.length === 0 && (
+        <div className="bg-white shadow rounded-lg p-8 text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            <div className="p-5">
-              <div className="flex justify-between mb-3">
-                <div className="flex-1 pr-2">
-                  <h3 className="text-lg font-semibold mb-1 text-gray-800 truncate">
-                    {project.name}
-                  </h3>
-                  <span className="text-sm text-gray-500 block truncate">
-                    Client: {project.client}
-                  </span>
-                </div>
-                <span
-                  className={`text-xs font-medium px-2.5 py-0.5 rounded h-fit flex-shrink-0 ${
-                    project.status === "On Track"
-                      ? "bg-green-100 text-green-800"
-                      : project.status === "In Progress"
-                      ? "bg-indigo-100 text-indigo-800"
-                      : project.status === "At Risk"
-                      ? "bg-red-100 text-red-800"
-                      : project.status === "Completed"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {project.status}
-                </span>
-              </div>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+            />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">
+            No projects found
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {searchQuery || statusFilter !== "All"
+              ? "Try adjusting your search or filter settings."
+              : "You aren't assigned to any projects yet."}
+          </p>
+        </div>
+      )}
 
-              <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                {project.description}
-              </p>
-
-              {/* Progress bar */}
-              <div className="mb-3">
-                <div className="flex justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-700">
-                    Progress
-                  </span>
-                  <span className="text-xs font-medium text-gray-700">
-                    {project.completion}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      project.completion < 30
-                        ? "bg-red-500"
-                        : project.completion < 70
-                        ? "bg-yellow-500"
-                        : "bg-green-500"
+      {/* Projects grid - Only show when not loading and we have projects */}
+      {!loading && !error && filteredProjects.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredProjects.map((project) => (
+            <div
+              key={project.id}
+              className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => handleOpenProjectDetails(project)}
+            >
+              <div className="p-5">
+                <div className="flex justify-between mb-3">
+                  <div className="flex-1 pr-2">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-800 truncate">
+                      {project.name}
+                    </h3>
+                    <span className="text-sm text-gray-500 block truncate">
+                      Client: {project.client}
+                    </span>
+                  </div>
+                  <span
+                    className={`text-xs font-medium px-2.5 py-0.5 rounded h-fit flex-shrink-0 ${
+                      project.status === "On Track"
+                        ? "bg-green-100 text-green-800"
+                        : project.status === "In Progress"
+                        ? "bg-indigo-100 text-indigo-800"
+                        : project.status === "At Risk"
+                        ? "bg-red-100 text-red-800"
+                        : project.status === "Completed"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
                     }`}
-                    style={{ width: `${project.completion}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Dates and team */}
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 text-gray-500 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <span className="text-xs text-gray-500">
-                    {calculateDaysLeft(project.deadline) > 0
-                      ? `${calculateDaysLeft(project.deadline)} days left`
-                      : "Overdue"}
+                    {project.status}
                   </span>
                 </div>
-                <div className="flex -space-x-2">
-                  {project.team.slice(0, 3).map((member) => (
-                    <img
-                      key={member.id}
-                      className="w-6 h-6 rounded-full border border-white"
-                      src={member.avatar}
-                      alt={member.name}
-                      title={member.name}
-                    />
-                  ))}
-                  {project.team.length > 3 && (
-                    <div className="w-6 h-6 rounded-full bg-gray-200 border border-white flex items-center justify-center text-xs text-gray-600">
-                      +{project.team.length - 3}
-                    </div>
-                  )}
+                <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                  {project.description}
+                </p>
+                {/* Progress bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-700">
+                      Progress
+                    </span>
+                    <span className="text-xs font-medium text-gray-700">
+                      {project.completion}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        project.completion < 30
+                          ? "bg-red-500"
+                          : project.completion < 70
+                          ? "bg-yellow-500"
+                          : "bg-green-500"
+                      }`}
+                      style={{ width: `${project.completion}%` }}
+                    ></div>
+                  </div>
                 </div>
-              </div>
-
-              {/* My tasks */}
-              <div>
-                <h4 className="text-xs font-medium text-gray-700 mb-2">
-                  My Tasks ({project.tasks.filter((t) => t.assigned).length})
-                </h4>
-                <div className="space-y-2">
-                  {project.tasks
-                    .filter((task) => task.assigned)
-                    .slice(0, 2)
-                    .map((task) => (
+                {/* Dates and team */}
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 text-gray-500 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-xs text-gray-500">
+                      {calculateDaysLeft(project.deadline) > 0
+                        ? `${calculateDaysLeft(project.deadline)} days left`
+                        : "Overdue"}
+                    </span>
+                  </div>
+                  <div className="flex -space-x-2">
+                    {project.team.slice(0, 3).map((member) => (
+                      <img
+                        key={member.id}
+                        className="w-6 h-6 rounded-full border border-white"
+                        src={member.avatar}
+                        alt={member.name}
+                        title={member.name}
+                      />
+                    ))}
+                    {project.team.length > 3 && (
+                      <div className="w-6 h-6 rounded-full bg-gray-200 border border-white flex items-center justify-center text-xs text-gray-600">
+                        +{project.team.length - 3}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* My tasks */}
+                <div>
+                  <h4 className="text-xs font-medium text-gray-700 mb-2">
+                    My Tasks ({project.tasks.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {project.tasks.slice(0, 2).map((task) => (
                       <div
                         key={task.id}
                         className="flex items-center justify-between text-sm"
@@ -617,7 +696,8 @@ const Projects = () => {
                         </span>
                         <span
                           className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
-                            task.status === "To Do"
+                            task.status === "To Do" ||
+                            task.status === "Not Started"
                               ? "bg-gray-100 text-gray-800"
                               : task.status === "In Progress"
                               ? "bg-indigo-100 text-indigo-800"
@@ -628,43 +708,18 @@ const Projects = () => {
                         </span>
                       </div>
                     ))}
-                  {project.tasks.filter((t) => t.assigned).length > 2 && (
-                    <span className="text-xs text-indigo-600">
-                      +{project.tasks.filter((t) => t.assigned).length - 2} more
-                      tasks
-                    </span>
-                  )}
+                    {project.tasks.length > 2 && (
+                      <span className="text-xs text-indigo-600">
+                        +{project.tasks.length - 2} more tasks
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
-
-        {filteredProjects.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-12 bg-white rounded-lg shadow">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-16 w-16 text-gray-300 mb-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-              />
-            </svg>
-            <h3 className="text-lg font-medium text-gray-900">
-              No projects found
-            </h3>
-            <p className="text-gray-500 mt-1">
-              Try adjusting your search or filter criteria
-            </p>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Project Detail Modal - Made responsive for mobile */}
       {showProjectDetails && selectedProject && (

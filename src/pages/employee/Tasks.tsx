@@ -1,155 +1,126 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Modal from "../../components/Modal";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  onEmployeeTasksUpdate,
+  getEmployeeByEmail,
+  updateTask,
+  getProject,
+  getUserData,
+} from "../../services/firebase";
+import type { TaskData } from "../../services/firebase";
 
-// Mock task data
-const MOCK_TASKS = [
-  {
-    id: 1,
-    title: "Design new landing page mockups",
-    description: "Create mockups for the new marketing campaign landing page",
-    status: "In Progress",
-    priority: "High",
-    dueDate: "2023-11-15",
+// Extended interface for task with additional properties set during formatting
+interface FormattedTask extends TaskData {
+  id: string;
+  projectName?: string;
+  createdByName?: string;
+  createdByAvatar?: string;
+}
+
+// Extended interface for project data returned from getProject
+interface ProjectData {
+  id: string;
+  name: string;
+  [key: string]: any; // Allow other properties
+}
+
+// Extended interface for user data returned from getUserData
+interface UserData {
+  id: string;
+  fullName: string;
+  avatar?: string;
+  [key: string]: any; // Allow other properties
+}
+
+
+// Helper function to format task data from Firebase
+const formatTask = async (task: FormattedTask) => {
+  let projectData: ProjectData | null = null;
+  let creatorData: UserData | null = null;
+
+  // Fetch project data if projectId exists
+  if (task.projectId) {
+    try {
+      projectData = (await getProject(task.projectId)) as ProjectData;
+      // Store the project name in the task for easier access
+      if (projectData) {
+        task.projectName = projectData.name;
+      }
+    } catch (error) {
+      console.error("Error fetching project:", error);
+    }
+  }
+
+  // Fetch creator data if createdBy exists
+  if (task.createdBy) {
+    try {
+      creatorData = (await getUserData(task.createdBy)) as UserData;
+      // Store the creator name in the task for easier access
+      if (creatorData) {
+        task.createdByName = creatorData.fullName;
+        task.createdByAvatar = creatorData.avatar;
+      }
+    } catch (error) {
+      console.error("Error fetching creator:", error);
+    }
+  }
+
+  return {
+    id: task.id,
+    title: task.title || "Untitled Task",
+    description: task.description || "",
+    status: task.status || "To Do",
+    priority: task.priority || "Medium",
+    dueDate: task.dueDate || new Date().toISOString().split("T")[0],
     project: {
-      id: 1,
-      name: "Website Redesign",
+      id: task.projectId || "",
+      name: projectData?.name || task.projectName || "Unknown Project",
     },
     assignedBy: {
-      id: 1,
-      name: "John Manager",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
+      id: task.createdBy || "",
+      name: creatorData?.fullName || task.createdByName || "Unknown",
+      avatar:
+        creatorData?.avatar ||
+        task.createdByAvatar ||
+        "https://randomuser.me/api/portraits/men/1.jpg",
     },
-    checklist: [
-      { id: 1, text: "Research competitor landing pages", completed: true },
-      { id: 2, text: "Create wireframes", completed: true },
-      { id: 3, text: "Design mobile version", completed: false },
-      { id: 4, text: "Get feedback from team", completed: false },
-    ],
-    attachments: [
-      { id: 1, name: "wireframe.pdf", size: "2.4 MB", date: "2023-11-01" },
-    ],
-    timeEstimate: "6 hours",
-    timeSpent: "2.5 hours",
-  },
-  {
-    id: 2,
-    title: "Implement authentication API",
-    description:
-      "Connect the frontend with the new authentication API endpoints",
-    status: "To Do",
-    priority: "Medium",
-    dueDate: "2023-11-20",
-    project: {
-      id: 2,
-      name: "User Authentication",
-    },
-    assignedBy: {
-      id: 1,
-      name: "John Manager",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    },
-    checklist: [
-      { id: 1, text: "Review API documentation", completed: false },
-      { id: 2, text: "Implement login function", completed: false },
-      { id: 3, text: "Implement register function", completed: false },
-      { id: 4, text: "Add error handling", completed: false },
-    ],
-    attachments: [
-      { id: 1, name: "api_docs.pdf", size: "1.7 MB", date: "2023-11-03" },
-    ],
-    timeEstimate: "8 hours",
-    timeSpent: "0 hours",
-  },
-  {
-    id: 3,
-    title: "Fix checkout page bugs",
-    description: "Address the reported bugs in the checkout flow",
-    status: "To Do",
-    priority: "Critical",
-    dueDate: "2023-11-10",
-    project: {
-      id: 3,
-      name: "E-commerce Platform",
-    },
-    assignedBy: {
-      id: 2,
-      name: "Sarah Director",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    },
-    checklist: [
-      { id: 1, text: "Fix payment processing error", completed: false },
-      { id: 2, text: "Fix address validation", completed: false },
-      { id: 3, text: "Test on multiple browsers", completed: false },
-    ],
-    attachments: [
-      { id: 1, name: "bug_report.txt", size: "0.3 MB", date: "2023-11-05" },
-      { id: 2, name: "screenshot.png", size: "0.5 MB", date: "2023-11-05" },
-    ],
-    timeEstimate: "4 hours",
-    timeSpent: "0 hours",
-  },
-  {
-    id: 4,
-    title: "Update user documentation",
-    description: "Update the user documentation with new features",
-    status: "Completed",
-    priority: "Low",
-    dueDate: "2023-11-05",
-    project: {
-      id: 2,
-      name: "User Authentication",
-    },
-    assignedBy: {
-      id: 1,
-      name: "John Manager",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    },
-    checklist: [
-      { id: 1, text: "Update login documentation", completed: true },
-      { id: 2, text: "Update registration documentation", completed: true },
-      { id: 3, text: "Add screenshots", completed: true },
-      { id: 4, text: "Proofread", completed: true },
-    ],
-    attachments: [
-      { id: 1, name: "old_docs.pdf", size: "1.2 MB", date: "2023-10-28" },
-      { id: 2, name: "new_docs.pdf", size: "1.4 MB", date: "2023-11-04" },
-    ],
-    timeEstimate: "5 hours",
-    timeSpent: "4.5 hours",
-  },
-  {
-    id: 5,
-    title: "Research competitor features",
-    description:
-      "Analyze competitor products and identify key features we should implement",
-    status: "In Progress",
-    priority: "Medium",
-    dueDate: "2023-11-25",
-    project: {
-      id: 4,
-      name: "Market Research",
-    },
-    assignedBy: {
-      id: 2,
-      name: "Sarah Director",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    },
-    checklist: [
-      { id: 1, text: "Identify top 5 competitors", completed: true },
-      { id: 2, text: "Document key features", completed: true },
-      { id: 3, text: "Compare pricing models", completed: false },
-      { id: 4, text: "Prepare presentation", completed: false },
-    ],
-    attachments: [],
-    timeEstimate: "10 hours",
-    timeSpent: "5 hours",
-  },
-];
+    checklist: Array.isArray(task.checklist) ? task.checklist : [],
+    attachments: Array.isArray(task.attachments) ? task.attachments : [],
+    timeEstimate: task.timeEstimate || "",
+    timeSpent: task.timeSpent || "",
+  };
+};
+
+// Define the type for the tasks state
+type DisplayTask = {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  dueDate: string;
+  project: { id: string; name: string };
+  assignedBy: { id: string; name: string; avatar: string };
+  checklist: any[];
+  attachments: any[];
+  timeEstimate: string;
+  timeSpent: string;
+};
+
+// Define types for other state variables
+type TaskToComplete = {
+  id: string;
+  title: string;
+  newStatus: string;
+};
 
 const Tasks = () => {
-  const [tasks, setTasks] = useState(MOCK_TASKS);
-  const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  const { userData } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<DisplayTask[]>([]);
+  const [selectedTask, setSelectedTask] = useState<DisplayTask | null>(null);
   const [showTaskDetails, setShowTaskDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
@@ -158,9 +129,57 @@ const Tasks = () => {
 
   // Modal states
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [showTaskCompleteModal, setShowTaskCompleteModal] = useState(false);
-  const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
+  const [taskToComplete, setTaskToComplete] = useState<TaskToComplete | null>(
+    null
+  );
+
+  // Set up real-time listener for tasks
+  useEffect(() => {
+    if (!userData?.email) return;
+
+    setLoading(true);
+
+    const setupTasksListener = async () => {
+      try {
+        // Get employee record by email
+        const employeeData = await getEmployeeByEmail(userData.email);
+
+        if (!employeeData) {
+          console.error("No employee record found for email:", userData.email);
+          setLoading(false);
+          return;
+        }
+
+        console.log("Setting up tasks listener for employee:", employeeData.id);
+
+        // Set up the listener using the employee ID
+        const unsubscribe = onEmployeeTasksUpdate(async (updatedTasks) => {
+          console.log("Received tasks update:", updatedTasks.length, "tasks");
+
+          // Process each task with detailed information
+          const formattedTasksPromises = updatedTasks.map(formatTask);
+          const formattedTasks = await Promise.all(formattedTasksPromises);
+
+          setTasks(formattedTasks);
+          setLoading(false);
+        }, employeeData.id);
+
+        return unsubscribe;
+      } catch (error) {
+        console.error("Error setting up tasks listener:", error);
+        setLoading(false);
+        return () => {};
+      }
+    };
+
+    const unsubscribePromise = setupTasksListener();
+
+    return () => {
+      unsubscribePromise.then((unsubscribe) => unsubscribe && unsubscribe());
+    };
+  }, [userData?.email]);
 
   // Apply filters to tasks
   const filteredTasks = tasks.filter((task) => {
@@ -191,38 +210,46 @@ const Tasks = () => {
   const projects = ["All", ...new Set(tasks.map((task) => task.project.name))];
 
   // Handle checklist item toggle
-  const handleChecklistToggle = (taskId: number, checklistItemId: number) => {
-    setTasks((prevTasks) =>
-      prevTasks.map((task) => {
-        if (task.id === taskId) {
-          const updatedChecklist = task.checklist.map((item) => {
-            if (item.id === checklistItemId) {
-              return { ...item, completed: !item.completed };
-            }
-            return item;
-          });
-          return { ...task, checklist: updatedChecklist };
-        }
-        return task;
-      })
-    );
+  const handleChecklistToggle = async (
+    taskId: string,
+    checklistItemId: number
+  ) => {
+    // Find the task and updated checklist
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
 
-    // Update selected task if it's open
-    if (selectedTask && selectedTask.id === taskId) {
-      setSelectedTask((prevTask: any) => {
-        const updatedChecklist = prevTask.checklist.map((item: any) => {
-          if (item.id === checklistItemId) {
-            return { ...item, completed: !item.completed };
+    const updatedChecklist = task.checklist.map((item) => {
+      if (item.id === checklistItemId) {
+        return { ...item, completed: !item.completed };
+      }
+      return item;
+    });
+
+    try {
+      // Update in Firebase
+      await updateTask(taskId, { checklist: updatedChecklist });
+
+      // Update in local state (will be overridden by real-time update)
+      setTasks((prevTasks) =>
+        prevTasks.map((t) => {
+          if (t.id === taskId) {
+            return { ...t, checklist: updatedChecklist };
           }
-          return item;
-        });
-        return { ...prevTask, checklist: updatedChecklist };
-      });
+          return t;
+        })
+      );
+
+      // Update selected task if it's open
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask({ ...selectedTask, checklist: updatedChecklist });
+      }
+    } catch (error) {
+      console.error("Error updating checklist:", error);
     }
   };
 
   // Handle task status change
-  const handleStatusChange = (taskId: number, newStatus: string) => {
+  const handleStatusChange = (taskId: string, newStatus: string) => {
     // If task is being marked as completed, show confirmation
     if (newStatus === "Completed") {
       const task = tasks.find((t) => t.id === taskId);
@@ -233,55 +260,60 @@ const Tasks = () => {
           newStatus,
         });
         setShowTaskCompleteModal(true);
-        return;
       }
+    } else {
+      // Otherwise, update immediately
+      updateTaskStatus(taskId, newStatus);
     }
-
-    // Otherwise update directly
-    updateTaskStatus(taskId, newStatus);
   };
 
   // Function to actually update task status
-  const updateTaskStatus = (taskId: number, newStatus: string) => {
-    setTasks((prevTasks) =>
-      prevTasks.map((task) => {
-        if (task.id === taskId) {
-          return { ...task, status: newStatus };
-        }
-        return task;
-      })
-    );
+  const updateTaskStatus = async (taskId: string, newStatus: string) => {
+    try {
+      // Update in Firebase - use type assertion for the status field
+      await updateTask(taskId, {
+        status: newStatus as
+          | "Not Started"
+          | "In Progress"
+          | "Completed"
+          | "Overdue",
+      });
 
-    // Update selected task if it's open
-    if (selectedTask && selectedTask.id === taskId) {
-      setSelectedTask((prevTask: any) => ({
-        ...prevTask,
-        status: newStatus,
-      }));
+      // Update in local state (will be overridden by real-time update)
+      setTasks((prevTasks) =>
+        prevTasks.map((task) => {
+          if (task.id === taskId) {
+            return { ...task, status: newStatus };
+          }
+          return task;
+        })
+      );
+
+      // Update selected task if it's open
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask({ ...selectedTask, status: newStatus });
+      }
+    } catch (error) {
+      console.error("Error updating task status:", error);
     }
-
-    setTaskToComplete(null);
-    setShowTaskCompleteModal(false);
   };
 
-  // Open task details
-  const handleOpenTaskDetails = (task: any) => {
+  const handleOpenTaskDetails = (task: DisplayTask) => {
     setSelectedTask(task);
     setShowTaskDetails(true);
   };
 
-  // Close task details
   const handleCloseTaskDetails = () => {
     setShowTaskDetails(false);
+    setSelectedTask(null);
   };
 
   // Delete task handler
-  const handleDeleteTask = (taskId: number) => {
+  const handleDeleteTask = (taskId: string) => {
     setTaskToDelete(taskId);
     setShowDeleteConfirmModal(true);
   };
 
-  // Confirm delete task
   const confirmDeleteTask = () => {
     if (taskToDelete) {
       setTasks(tasks.filter((task) => task.id !== taskToDelete));
@@ -289,7 +321,6 @@ const Tasks = () => {
         setShowTaskDetails(false);
       }
       setShowDeleteConfirmModal(false);
-      setTaskToDelete(null);
     }
   };
 
@@ -304,9 +335,9 @@ const Tasks = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
         <h1 className="text-3xl font-bold text-gray-800">My Tasks</h1>
-        <div className="w-full sm:w-auto">
+        <div className="w-full md:w-auto">
           <div className="relative">
             <input
               type="text"
@@ -335,65 +366,51 @@ const Tasks = () => {
         </div>
       </div>
 
-      {/* Filter section - Made responsive */}
+      {/* Filter section */}
       <div className="bg-white shadow rounded-lg p-4 mb-6 overflow-x-auto">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
+        <div className="flex space-x-4">
           <div>
-            <label
-              htmlFor="status-filter"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label className="block text-sm font-medium text-gray-700">
               Status
             </label>
             <select
-              id="status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 min-w-[150px]"
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
             >
-              <option value="All">All Statuses</option>
+              <option value="All">All</option>
               <option value="To Do">To Do</option>
               <option value="In Progress">In Progress</option>
               <option value="Completed">Completed</option>
             </select>
           </div>
-
           <div>
-            <label
-              htmlFor="priority-filter"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label className="block text-sm font-medium text-gray-700">
               Priority
             </label>
             <select
-              id="priority-filter"
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 min-w-[150px]"
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
             >
-              <option value="All">All Priorities</option>
+              <option value="All">All</option>
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
               <option value="High">High</option>
               <option value="Critical">Critical</option>
             </select>
           </div>
-
           <div>
-            <label
-              htmlFor="project-filter"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label className="block text-sm font-medium text-gray-700">
               Project
             </label>
             <select
-              id="project-filter"
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 min-w-[150px]"
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
             >
-              {projects.map((project, index) => (
-                <option key={index} value={project}>
+              {projects.map((project) => (
+                <option key={project} value={project}>
                   {project}
                 </option>
               ))}
@@ -402,141 +419,156 @@ const Tasks = () => {
         </div>
       </div>
 
-      {/* Task list - Updated grid for better mobile experience */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredTasks.map((task) => (
-          <div
-            key={task.id}
-            className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => handleOpenTaskDetails(task)}
-          >
-            <div className="p-5">
-              <div className="flex justify-between mb-2">
-                <span
-                  className={`text-xs font-medium px-2.5 py-0.5 rounded ${
-                    task.priority === "Low"
-                      ? "bg-blue-100 text-blue-800"
-                      : task.priority === "Medium"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : task.priority === "High"
-                      ? "bg-orange-100 text-orange-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {task.priority}
-                </span>
-                <span
-                  className={`text-xs font-medium px-2.5 py-0.5 rounded ${
-                    task.status === "To Do"
-                      ? "bg-gray-100 text-gray-800"
-                      : task.status === "In Progress"
-                      ? "bg-indigo-100 text-indigo-800"
-                      : "bg-green-100 text-green-800"
-                  }`}
-                >
-                  {task.status}
-                </span>
-              </div>
-              <h3 className="text-lg font-semibold mb-2 text-gray-800 line-clamp-1">
-                {task.title}
-              </h3>
-              <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                {task.description}
-              </p>
-
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <div className="flex items-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 text-gray-500 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <span className="text-xs text-gray-500">
-                    Due: {new Date(task.dueDate).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 text-gray-500 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span className="text-xs text-gray-500">
-                    Est: {task.timeEstimate}
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+      {/* Loading state */}
+      {loading ? (
+        <div className="flex justify-center items-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        </div>
+      ) : (
+        <>
+          {/* Tasks grid */}
+          {filteredTasks.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredTasks.map((task) => (
                 <div
-                  className="bg-indigo-600 h-2 rounded-full"
-                  style={{ width: `${calculateProgress(task)}%` }}
-                ></div>
-              </div>
+                  key={task.id}
+                  className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => handleOpenTaskDetails(task)}
+                >
+                  <div className="p-5">
+                    <div className="flex justify-between mb-2">
+                      <span
+                        className={`text-xs font-medium px-2.5 py-0.5 rounded ${
+                          task.priority === "Low"
+                            ? "bg-blue-100 text-blue-800"
+                            : task.priority === "Medium"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : task.priority === "High"
+                            ? "bg-orange-100 text-orange-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {task.priority}
+                      </span>
+                      <span
+                        className={`text-xs font-medium px-2.5 py-0.5 rounded ${
+                          task.status === "To Do"
+                            ? "bg-yellow-50 text-yellow-700"
+                            : task.status === "In Progress"
+                            ? "bg-indigo-100 text-indigo-800"
+                            : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {task.status}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2 text-gray-800 line-clamp-1">
+                      {task.title}
+                    </h3>
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                      {task.description}
+                    </p>
 
-              <div className="flex justify-between items-center flex-wrap gap-2">
-                <div className="flex items-center">
-                  <img
-                    src={task.assignedBy.avatar}
-                    alt={task.assignedBy.name}
-                    className="w-6 h-6 rounded-full mr-2"
-                  />
-                  <span className="text-xs text-gray-500">
-                    From: {task.assignedBy.name}
-                  </span>
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-1"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <span className="text-xs text-gray-500">
+                          Due: {new Date(task.dueDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-1"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <span className="text-xs text-gray-500">
+                          Est: {task.timeEstimate}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                      <div
+                        className="bg-indigo-600 h-2 rounded-full"
+                        style={{ width: `${calculateProgress(task)}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                      <div className="flex items-center">
+                        <img
+                          src={task.assignedBy.avatar}
+                          alt={task.assignedBy.name}
+                          className="w-6 h-6 rounded-full mr-2"
+                        />
+                        <span className="text-xs text-gray-500">
+                          From: {task.assignedBy.name}
+                        </span>
+                      </div>
+                      <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
+                        {task.project.name}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
-                  {task.project.name}
-                </span>
-              </div>
+              ))}
             </div>
-          </div>
-        ))}
-
-        {filteredTasks.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-12 bg-white rounded-lg shadow">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-16 w-16 text-gray-300 mb-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-              />
-            </svg>
-            <h3 className="text-lg font-medium text-gray-900">
-              No tasks found
-            </h3>
-            <p className="text-gray-500 mt-1">
-              Try adjusting your search or filter criteria
-            </p>
-          </div>
-        )}
-      </div>
+          ) : (
+            // Empty state
+            <div className="bg-white shadow rounded-lg p-8 text-center">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                No tasks found
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchQuery ||
+                statusFilter !== "All" ||
+                priorityFilter !== "All" ||
+                projectFilter !== "All"
+                  ? "Try adjusting your search or filter settings."
+                  : "You don't have any tasks assigned yet."}
+              </p>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Task Detail Modal - with Delete button updated */}
       {showTaskDetails && selectedTask && (
@@ -562,7 +594,7 @@ const Tasks = () => {
                     <span
                       className={`text-xs font-medium px-2.5 py-0.5 rounded ${
                         selectedTask.status === "To Do"
-                          ? "bg-gray-100 text-gray-800"
+                          ? "bg-yellow-50 text-yellow-700"
                           : selectedTask.status === "In Progress"
                           ? "bg-indigo-100 text-indigo-800"
                           : "bg-green-100 text-green-800"
@@ -880,10 +912,12 @@ const Tasks = () => {
               Cancel
             </button>
             <button
-              onClick={() =>
-                taskToComplete &&
-                updateTaskStatus(taskToComplete.id, taskToComplete.newStatus)
-              }
+              onClick={() => {
+                if (taskToComplete) {
+                  updateTaskStatus(taskToComplete.id, taskToComplete.newStatus);
+                }
+                setShowTaskCompleteModal(false);
+              }}
               className="px-4 py-2 bg-green-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
             >
               Complete Task
@@ -892,7 +926,8 @@ const Tasks = () => {
         }
       >
         <p className="text-gray-700">
-          Are you sure you want to mark "{taskToComplete?.title}" as completed?
+          Are you sure you want to mark "{taskToComplete?.title || ""}" as
+          completed?
         </p>
         <p className="text-gray-500 text-sm mt-2">
           This will update the task status to Completed.
@@ -904,21 +939,23 @@ const Tasks = () => {
         <button
           onClick={() => {
             // Create a new empty task template
-            const newTask = {
-              id: Math.max(...tasks.map((t) => t.id)) + 1,
+            const newTask: DisplayTask = {
+              id: String(Math.max(...tasks.map((t) => Number(t.id))) + 1),
               title: "New Task",
               description: "",
               status: "To Do",
               priority: "Medium",
               dueDate: new Date().toISOString().split("T")[0],
               project: {
-                id: 1,
-                name: "Website Redesign",
+                id: String(tasks[0]?.project?.id || "1"),
+                name: tasks[0]?.project?.name || "Default Project",
               },
               assignedBy: {
-                id: 1,
-                name: "John Manager",
-                avatar: "https://randomuser.me/api/portraits/men/1.jpg",
+                id: userData?.id || "1",
+                name: userData?.fullName || "Me",
+                avatar:
+                  (userData as any)?.avatar ||
+                  "https://randomuser.me/api/portraits/men/1.jpg",
               },
               checklist: [],
               attachments: [],

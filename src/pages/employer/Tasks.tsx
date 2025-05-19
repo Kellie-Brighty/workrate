@@ -40,7 +40,7 @@ const getStatusColor = (status: string) => {
     case "in progress":
       return "bg-blue-100 text-blue-800";
     case "not started":
-      return "bg-gray-100 text-gray-800";
+      return "bg-yellow-50 text-yellow-700";
     case "overdue":
       return "bg-red-100 text-red-800";
     default:
@@ -108,17 +108,44 @@ const Tasks: React.FC = () => {
     // Start loading
     setLoading(true);
 
-    // Set up the listener for real-time updates
-    const unsubscribe = onTasksUpdate((updatedTasks) => {
-      setTasks(updatedTasks);
-      setLoading(false);
-    });
+    // Only set up the listener if projects and employees data are loaded
+    if (projects.length > 0 && employees.length > 0) {
+      // Set up the listener for real-time updates
+      const unsubscribe = onTasksUpdate((updatedTasks) => {
+        // Process tasks to ensure they have complete project and assignee information
+        const processedTasks = updatedTasks.map((task) => {
+          // Find project information
+          const project = projects.find((p) => p.id === task.projectId) || null;
 
-    // Clean up the listener when the component unmounts
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+          // Find assignee information
+          const assignee =
+            employees.find((e) => e.id === task.assignedTo) || null;
+
+          return {
+            ...task,
+            // Ensure project information is complete
+            projectName: project?.name || task.projectName || "Unknown Project",
+            projectInfo: project || {
+              id: task.projectId,
+              name: project?.name || "Unknown Project",
+            },
+            // Ensure assignee information is complete
+            assigneeName: assignee?.name || task.assigneeName || "Unassigned",
+            assigneeInfo:
+              assignee || (task.assignedTo ? { id: task.assignedTo } : null),
+          };
+        });
+
+        setTasks(processedTasks);
+        setLoading(false);
+      });
+
+      // Clean up the listener when the component unmounts or dependencies change
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [projects, employees]);
 
   // Fetch projects for the dropdown
   useEffect(() => {
@@ -417,11 +444,17 @@ const Tasks: React.FC = () => {
                     const effectiveStatus = getEffectiveStatus(task);
 
                     // Get assignee and project info or provide defaults
-                    const assigneeName = task.assignee?.name || "Unassigned";
+                    const assigneeName =
+                      task.assigneeName ||
+                      task.assigneeInfo?.name ||
+                      "Unassigned";
                     const assigneeAvatar =
-                      task.assignee?.avatar ||
+                      task.assigneeInfo?.avatar ||
                       "https://randomuser.me/api/portraits/lego/1.jpg";
-                    const projectTitle = task.project?.title || "No Project";
+                    const projectTitle =
+                      task.projectName ||
+                      task.projectInfo?.name ||
+                      "No Project";
 
                     return (
                       <tr
@@ -819,7 +852,11 @@ const Tasks: React.FC = () => {
                 <input
                   type="text"
                   id="task-detail-assignee"
-                  defaultValue={selectedTask.assignee?.name || "Unassigned"}
+                  defaultValue={
+                    selectedTask.assigneeName ||
+                    selectedTask.assigneeInfo?.name ||
+                    "Unassigned"
+                  }
                   readOnly
                   className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
                 />
@@ -888,7 +925,11 @@ const Tasks: React.FC = () => {
               <input
                 type="text"
                 id="task-detail-project"
-                defaultValue={selectedTask.project?.title || "No Project"}
+                defaultValue={
+                  selectedTask.projectName ||
+                  selectedTask.projectInfo?.name ||
+                  "No Project"
+                }
                 readOnly
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md bg-gray-50"
               />
@@ -949,6 +990,9 @@ const Tasks: React.FC = () => {
                   const dueDateElement = document.getElementById(
                     "edit-task-due-date"
                   ) as HTMLInputElement;
+                  const assigneeElement = document.getElementById(
+                    "edit-task-assignee"
+                  ) as HTMLSelectElement;
 
                   // Update the task in Firebase
                   await updateTask(selectedTask.id, {
@@ -957,6 +1001,7 @@ const Tasks: React.FC = () => {
                     priority: priorityElement.value as TaskData["priority"],
                     status: statusElement.value as TaskData["status"],
                     dueDate: dueDateElement.value,
+                    assignedTo: assigneeElement.value || undefined,
                   });
 
                   // Close the modal
@@ -1011,13 +1056,15 @@ const Tasks: React.FC = () => {
                 </label>
                 <select
                   id="edit-task-assignee"
-                  defaultValue={selectedTask.assignee.name}
+                  defaultValue={selectedTask.assignedTo || ""}
                   className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
                 >
-                  <option value="Jason Chen">Jason Chen</option>
-                  <option value="Sarah Johnson">Sarah Johnson</option>
-                  <option value="Michael Brown">Michael Brown</option>
-                  <option value="Emily Davis">Emily Davis</option>
+                  <option value="">Unassigned</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

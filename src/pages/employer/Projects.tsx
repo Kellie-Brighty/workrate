@@ -19,7 +19,7 @@ const getStatusColor = (status: string) => {
     case "just started":
       return "bg-yellow-100 text-yellow-800";
     case "not started":
-      return "bg-gray-100 text-gray-800";
+      return "bg-yellow-50 text-yellow-700";
     default:
       return "bg-gray-100 text-gray-800";
   }

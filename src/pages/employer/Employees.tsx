@@ -10,6 +10,7 @@ import {
   getEmployees,
   createEmployee,
   updateEmployee,
+  getEmployeePerformance,
 } from "../../services/firebase";
 
 // Define EmployeeData interface locally
@@ -22,7 +23,28 @@ interface EmployeeData {
   joinDate?: string;
   avatar?: string;
   employerId?: string;
+  tempPassword?: string;
+  accountCreated?: boolean;
 }
+
+// Predefined list of common departments
+const PREDEFINED_DEPARTMENTS = [
+  "Engineering",
+  "Product",
+  "Marketing",
+  "Sales",
+  "Customer Support",
+  "Human Resources",
+  "Finance",
+  "Operations",
+  "Research and Development",
+  "Legal",
+  "IT",
+  "Administration",
+  "Design",
+  "Quality Assurance",
+  "Business Development",
+];
 
 const Employees: React.FC = () => {
   const { userData } = useAuth();
@@ -49,6 +71,11 @@ const Employees: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>(
     {}
   );
+
+  // State for employee performance data
+  const [selectedEmployeePerformance, setSelectedEmployeePerformance] =
+    useState<any>(null);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -133,9 +160,21 @@ const Employees: React.FC = () => {
   };
 
   // View employee details
-  const viewEmployeeDetails = (employee: any) => {
+  const viewEmployeeDetails = async (employee: any) => {
     setSelectedEmployee(employee);
     setShowDetailsModal(true);
+
+    // Fetch performance data for the selected employee
+    try {
+      setLoadingPerformance(true);
+      const performanceData = await getEmployeePerformance(employee.id);
+      setSelectedEmployeePerformance(performanceData);
+    } catch (error) {
+      console.error("Error fetching employee performance:", error);
+      setSelectedEmployeePerformance(null);
+    } finally {
+      setLoadingPerformance(false);
+    }
   };
 
   // Handle new employee input change
@@ -173,6 +212,16 @@ const Employees: React.FC = () => {
         position: "",
         department: "",
       });
+
+      // Open the employee details modal to show the credentials
+      if (newEmployeeObj.accountCreated && newEmployeeObj.tempPassword) {
+        console.log(
+          "Setting selected employee with credentials:",
+          newEmployeeObj
+        );
+        setSelectedEmployee(newEmployeeObj);
+        setShowDetailsModal(true);
+      }
     } catch (error) {
       console.error("Error adding employee:", error);
       // @ts-ignore - Ignore type checking for this call
@@ -800,11 +849,23 @@ const Employees: React.FC = () => {
                 className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
               >
                 <option value="">Select Department</option>
-                {departments.map((dept) => (
+                {/* Show predefined departments first */}
+                {PREDEFINED_DEPARTMENTS.map((dept) => (
                   <option key={dept} value={dept}>
                     {dept}
                   </option>
                 ))}
+
+                {/* Show existing departments that aren't in the predefined list */}
+                {departments
+                  .filter(
+                    (dept) => !!dept && !PREDEFINED_DEPARTMENTS.includes(dept)
+                  )
+                  .map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
                 <option value="Other">Other</option>
               </select>
             </div>
@@ -841,6 +902,10 @@ const Employees: React.FC = () => {
         >
           {selectedEmployee && (
             <div className="py-4">
+              {(() => {
+                console.log("Showing details for employee:", selectedEmployee);
+                return null;
+              })()}
               <div className="flex flex-col items-center mb-6">
                 <img
                   className="h-24 w-24 rounded-full mb-4"
@@ -854,7 +919,6 @@ const Employees: React.FC = () => {
                   {selectedEmployee.email}
                 </p>
               </div>
-
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -898,9 +962,215 @@ const Employees: React.FC = () => {
                       {new Date(selectedEmployee.joinDate).toLocaleDateString()}
                     </p>
                   </div>
-                </div>
-              </div>
 
+                  {/* Display account credentials if available */}
+                  {selectedEmployee.tempPassword ? (
+                    <div className="sm:col-span-2">
+                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                        Account Credentials
+                      </h4>
+                      <div className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <p className="text-sm text-gray-700 mb-1">
+                          <span className="font-medium">Email:</span>{" "}
+                          {selectedEmployee.email}
+                        </p>
+                        <div className="flex items-center">
+                          <p className="text-sm text-gray-700">
+                            <span className="font-medium">
+                              Temporary Password:
+                            </span>{" "}
+                            {selectedEmployee.tempPassword}
+                          </p>
+                          <button
+                            type="button"
+                            className="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                `Email: ${selectedEmployee.email}\nPassword: ${selectedEmployee.tempPassword}`
+                              );
+                              showSuccess(
+                                "Copied",
+                                "Login credentials copied to clipboard"
+                              );
+                            }}
+                          >
+                            <svg
+                              className="h-3 w-3 mr-1"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                              />
+                            </svg>
+                            Copy
+                          </button>
+                        </div>
+                        <p className="text-xs text-yellow-600 mt-2">
+                          <svg
+                            className="inline-block h-3 w-3 mr-1"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          Please share these credentials with the employee. They
+                          can use them to log in.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    selectedEmployee.accountCreated === false && (
+                      <div className="sm:col-span-2">
+                        <p className="text-sm text-gray-500">
+                          This employee already had an existing account. No new
+                          credentials were generated.
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>{" "}
+              {/* Performance Metrics Section */}{" "}
+              {selectedEmployeePerformance &&
+                selectedEmployeePerformance.metrics && (
+                  <div className="mb-6">
+                    {" "}
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">
+                      {" "}
+                      Performance Metrics{" "}
+                    </h4>{" "}
+                    <div className="bg-white rounded-lg p-4 border border-gray-200">
+                      {" "}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {" "}
+                        <div>
+                          {" "}
+                          <div className="flex justify-between mb-1">
+                            {" "}
+                            <span className="text-xs font-medium text-gray-500">
+                              {" "}
+                              Task Completion Rate{" "}
+                            </span>{" "}
+                            <span className="text-xs font-medium text-gray-700">
+                              {" "}
+                              {selectedEmployeePerformance.metrics.taskCompletionRate.toFixed(
+                                1
+                              )}
+                              %{" "}
+                            </span>{" "}
+                          </div>{" "}
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            {" "}
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{
+                                width: `${selectedEmployeePerformance.metrics.taskCompletionRate}%`,
+                              }}
+                            ></div>{" "}
+                          </div>{" "}
+                        </div>{" "}
+                        <div>
+                          {" "}
+                          <div className="flex justify-between mb-1">
+                            {" "}
+                            <span className="text-xs font-medium text-gray-500">
+                              {" "}
+                              On-Time Completion{" "}
+                            </span>{" "}
+                            <span className="text-xs font-medium text-gray-700">
+                              {" "}
+                              {selectedEmployeePerformance.metrics.onTimeCompletionRate.toFixed(
+                                1
+                              )}
+                              %{" "}
+                            </span>{" "}
+                          </div>{" "}
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            {" "}
+                            <div
+                              className="bg-green-600 h-2 rounded-full"
+                              style={{
+                                width: `${selectedEmployeePerformance.metrics.onTimeCompletionRate}%`,
+                              }}
+                            ></div>{" "}
+                          </div>{" "}
+                        </div>{" "}
+                        <div>
+                          {" "}
+                          <div className="flex justify-between mb-1">
+                            {" "}
+                            <span className="text-xs font-medium text-gray-500">
+                              {" "}
+                              Checklist Completion{" "}
+                            </span>{" "}
+                            <span className="text-xs font-medium text-gray-700">
+                              {" "}
+                              {selectedEmployeePerformance.metrics.checklistItemCompletionRate.toFixed(
+                                1
+                              )}
+                              %{" "}
+                            </span>{" "}
+                          </div>{" "}
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            {" "}
+                            <div
+                              className="bg-purple-600 h-2 rounded-full"
+                              style={{
+                                width: `${selectedEmployeePerformance.metrics.checklistItemCompletionRate}%`,
+                              }}
+                            ></div>{" "}
+                          </div>{" "}
+                        </div>{" "}
+                        <div>
+                          {" "}
+                          <div className="flex justify-between mb-1">
+                            {" "}
+                            <span className="text-xs font-medium text-gray-500">
+                              {" "}
+                              Overall Score{" "}
+                            </span>{" "}
+                            <span className="text-xs font-medium text-gray-700">
+                              {" "}
+                              {selectedEmployeePerformance.metrics.progressScore.toFixed(
+                                1
+                              )}
+                              %{" "}
+                            </span>{" "}
+                          </div>{" "}
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            {" "}
+                            <div
+                              className="bg-indigo-600 h-2 rounded-full"
+                              style={{
+                                width: `${selectedEmployeePerformance.metrics.progressScore}%`,
+                              }}
+                            ></div>{" "}
+                          </div>{" "}
+                        </div>{" "}
+                      </div>{" "}
+                    </div>{" "}
+                  </div>
+                )}{" "}
+              {loadingPerformance && (
+                <div className="flex justify-center items-center py-4">
+                  {" "}
+                  <div className="w-6 h-6 border-t-2 border-b-2 border-indigo-500 rounded-full animate-spin mr-2"></div>{" "}
+                  <span className="text-sm text-gray-500">
+                    Loading performance metrics...
+                  </span>{" "}
+                </div>
+              )}{" "}
               <div className="flex justify-between items-center">
                 <button
                   type="button"

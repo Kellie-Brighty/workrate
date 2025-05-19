@@ -128,7 +128,7 @@ const getStatusColor = (status: string) => {
     case "in progress":
       return "bg-blue-100 text-blue-800";
     case "not started":
-      return "bg-gray-100 text-gray-800";
+      return "bg-yellow-50 text-yellow-700";
     case "overdue":
       return "bg-red-100 text-red-800";
     default:

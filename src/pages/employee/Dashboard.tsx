@@ -5,76 +5,15 @@ import {
   useErrorNotification,
   useSuccessNotification,
 } from "../../contexts/NotificationContext";
+import {
+  onEmployeeTasksUpdate,
+  onEmployeeProjectsUpdate,
+  onEmployeeActivitiesUpdate,
+  getEmployeeByEmail,
+  onEmployeePerformanceUpdate,
+} from "../../services/firebase";
 
-// Mock data
-const employeeData = {
-  name: "Jason Chen",
-  title: "UI/UX Designer",
-  avatar: "https://randomuser.me/api/portraits/men/42.jpg",
-  performanceScore: 83,
-  assignedTasks: 12,
-  completedTasks: 8,
-  currentProjects: [
-    { id: 1, name: "Website Redesign", progress: 65, dueDate: "2023-12-15" },
-    {
-      id: 2,
-      name: "Mobile App Development",
-      progress: 30,
-      dueDate: "2024-01-10",
-    },
-  ],
-  upcomingTasks: [
-    {
-      id: 1,
-      title: "Design Mobile App Wireframes",
-      project: "Mobile App Development",
-      dueDate: "2023-12-05",
-      priority: "high",
-    },
-    {
-      id: 2,
-      title: "Create Icon Set",
-      project: "Website Redesign",
-      dueDate: "2023-12-07",
-      priority: "medium",
-    },
-    {
-      id: 3,
-      title: "UI Component Library",
-      project: "Website Redesign",
-      dueDate: "2023-12-12",
-      priority: "high",
-    },
-  ],
-  recentActivity: [
-    {
-      id: 1,
-      type: "task_completed",
-      description: "Completed Homepage Mockup",
-      time: "2 hours ago",
-    },
-    {
-      id: 2,
-      type: "comment",
-      description: "Commented on User Flow Diagram",
-      time: "1 day ago",
-    },
-    {
-      id: 3,
-      type: "reward",
-      description: "Received Star Performer badge",
-      time: "3 days ago",
-    },
-    {
-      id: 4,
-      type: "task_assigned",
-      description: "Assigned to Mobile App Development",
-      time: "1 week ago",
-    },
-  ],
-};
-
-// Mock notifications
+// Mock notifications - TO BE REPLACED LATER WITH REAL DATA
 const notifications = [
   {
     id: 1,
@@ -100,6 +39,26 @@ const notifications = [
 ];
 
 const EmployeeDashboard: React.FC = () => {
+  const { userData } = useAuth();
+  const navigate = useNavigate();
+  const showError = useErrorNotification();
+  const showSuccess = useSuccessNotification();
+
+  // State for employee data
+  const [employeeData, setEmployeeData] = useState<any>(null);
+  const [employeeTasks, setEmployeeTasks] = useState<any[]>([]);
+  const [employeeProjects, setEmployeeProjects] = useState<any[]>([]);
+  const [employeeActivities, setEmployeeActivities] = useState<
+    Array<{
+      id: string;
+      type: string;
+      description: string;
+      time: string;
+    }>
+  >([]);
+  const [performanceData, setPerformanceData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
   // State for dropdowns
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -109,11 +68,166 @@ const EmployeeDashboard: React.FC = () => {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  const showError = useErrorNotification();
-  const showSuccess = useSuccessNotification();
-
   // Count unread notifications
   const unreadCount = notificationsList.filter((notif) => !notif.read).length;
+
+  // Fetch employee data
+  useEffect(() => {
+    const fetchEmployeeData = async () => {
+      if (!userData?.email) return;
+
+      try {
+        setLoading(true);
+        // Get employee data from Firebase by email instead of id
+        const employee = await getEmployeeByEmail(userData.email);
+
+        if (employee) {
+          setEmployeeData(employee);
+          console.log("Employee data loaded:", employee);
+        } else {
+          console.error("No employee record found for email:", userData.email);
+          showError(
+            "Error",
+            "No employee record found. Please contact your administrator."
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching employee data:", error);
+        showError("Error", "Failed to load employee data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEmployeeData();
+  }, [userData?.email]);
+
+  // Set up real-time listeners for tasks
+  useEffect(() => {
+    if (!employeeData?.id) return;
+
+    // Set up Firebase real-time listener for tasks
+    const unsubscribeTasks = onEmployeeTasksUpdate((updatedTasks) => {
+      // Format task data for display
+      const formattedTasks = updatedTasks.map((task) => ({
+        ...task,
+        // Format due date
+        dueDate: task.dueDate
+          ? new Date(task.dueDate).toLocaleDateString()
+          : "No due date",
+        // Normalize priority to lowercase for consistent comparison
+        priority: (task.priority || "medium").toLowerCase(),
+        // Get project name (if available)
+        project: task.projectName || "General Task",
+      }));
+
+      setEmployeeTasks(formattedTasks);
+      console.log("Real-time tasks data updated:", formattedTasks);
+    }, employeeData.id);
+
+    // Clean up listeners on unmount
+    return () => {
+      unsubscribeTasks();
+    };
+  }, [employeeData?.id]);
+
+  // Set up real-time listeners for projects
+  useEffect(() => {
+    if (!employeeData?.id) return;
+
+    // Set up Firebase real-time listener for projects
+    const unsubscribeProjects = onEmployeeProjectsUpdate((updatedProjects) => {
+      // Format project data for display
+      const formattedProjects = updatedProjects.map((project) => ({
+        ...project,
+        // Ensure dates are formatted consistently
+        dueDate: project.endDate
+          ? new Date(project.endDate).toLocaleDateString()
+          : "No due date",
+        // Ensure progress is a number between 0-100
+        progress:
+          typeof project.progress === "number"
+            ? Math.min(100, Math.max(0, project.progress))
+            : 0,
+      }));
+
+      setEmployeeProjects(formattedProjects);
+      console.log("Real-time projects data updated:", formattedProjects);
+    }, employeeData.id);
+
+    // Clean up listeners on unmount
+    return () => {
+      unsubscribeProjects();
+    };
+  }, [employeeData?.id]);
+
+  // Set up real-time listeners for activities
+  useEffect(() => {
+    if (!employeeData?.id) return;
+
+    // Set up Firebase real-time listener for activities
+    const unsubscribeActivities = onEmployeeActivitiesUpdate(
+      (updatedActivities) => {
+        // Format activities for better display
+        const formattedActivities = updatedActivities.map((activity) => {
+          // Calculate relative time
+          const activityTime = activity.timestamp?.toDate();
+          let timeString = "just now";
+
+          if (activityTime) {
+            const now = new Date();
+            const diffMs = now.getTime() - activityTime.getTime();
+            const diffMins = Math.round(diffMs / 60000);
+            const diffHours = Math.round(diffMs / 3600000);
+            const diffDays = Math.round(diffMs / 86400000);
+
+            if (diffMins < 60) {
+              timeString = `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+            } else if (diffHours < 24) {
+              timeString = `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+            } else {
+              timeString = `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+            }
+          }
+
+          return {
+            id: activity.id,
+            type: activity.action?.type || "task",
+            description: activity.action?.description || activity.action,
+            time: timeString,
+          };
+        });
+
+        setEmployeeActivities(formattedActivities);
+        console.log("Real-time activities data updated:", formattedActivities);
+      },
+      employeeData.id
+    );
+
+    // Clean up listeners on unmount
+    return () => {
+      unsubscribeActivities();
+    };
+  }, [employeeData?.id]);
+
+  // Set up real-time listener for performance metrics
+  useEffect(() => {
+    if (!employeeData?.id) return;
+
+    // Set up Firebase real-time listener for performance metrics
+    const unsubscribePerformance = onEmployeePerformanceUpdate(
+      (updatedPerformance) => {
+        setPerformanceData(updatedPerformance);
+        console.log("Real-time performance data updated:", updatedPerformance);
+      },
+      employeeData.id
+    );
+
+    // Clean up listener on unmount
+    return () => {
+      unsubscribePerformance();
+    };
+  }, [employeeData?.id]);
 
   // Mark notification as read
   const markAsRead = (id: number) => {
@@ -157,8 +271,78 @@ const EmployeeDashboard: React.FC = () => {
     };
   }, []);
 
+  // Computed values for dashboard stats
+  const assignedTasks = employeeTasks.length;
+  const completedTasks = employeeTasks.filter(
+    (task) => task.status === "Completed"
+  ).length;
+  const pendingTasks = assignedTasks - completedTasks;
+
+  // Use the real performance score from Firebase if available, or calculate a simple one
+  const performanceScore = performanceData?.metrics?.progressScore
+    ? Math.round(performanceData.metrics.progressScore)
+    : assignedTasks > 0
+    ? Math.round((completedTasks / assignedTasks) * 100)
+    : 0;
+
+  // Get upcoming tasks (not completed, sorted by due date)
+  const upcomingTasks = [...employeeTasks]
+    .filter((task) => task.status !== "Completed")
+    .sort(
+      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    )
+    .slice(0, 3);
+
   const { logout } = useAuth();
-  const navigate = useNavigate();
+
+  // Show loading state if data is not yet loaded
+  if (loading) {
+    return (
+      <div className="w-full bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 border-t-4 border-b-4 border-indigo-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600 text-lg">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // No employee data found after loading
+  if (!employeeData) {
+    return (
+      <div className="w-full bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center text-center max-w-md px-4">
+          <svg
+            className="w-20 h-20 text-gray-400 mb-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+              d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <h2 className="text-xl font-bold text-gray-700 mb-2">
+            Employee Profile Not Found
+          </h2>
+          <p className="text-gray-600 mb-6">
+            We couldn't find an employee profile associated with your account.
+            Please contact your administrator for assistance.
+          </p>
+          <button
+            onClick={() => navigate("/login")}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-gray-50 min-h-screen">
@@ -366,7 +550,7 @@ const EmployeeDashboard: React.FC = () => {
                           {employeeData.name}
                         </div>
                         <div className="text-sm font-medium text-gray-500">
-                          {employeeData.title}
+                          {employeeData.position}
                         </div>
                       </div>
                     </div>
@@ -474,26 +658,26 @@ const EmployeeDashboard: React.FC = () => {
                   <h2 className="text-2xl font-bold text-gray-900">
                     Welcome back, {employeeData.name}
                   </h2>
-                  <p className="text-gray-500">{employeeData.title}</p>
+                  <p className="text-gray-500">{employeeData.position}</p>
                 </div>
               </div>
 
               <div className="mt-6 md:mt-0 flex items-center">
                 <div className="mr-6 text-center">
                   <div className="text-2xl font-bold text-indigo-600">
-                    {employeeData.performanceScore}%
+                    {performanceScore}%
                   </div>
                   <div className="text-xs text-gray-500">Performance</div>
                 </div>
                 <div className="mr-6 text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {employeeData.completedTasks}
+                    {completedTasks}
                   </div>
                   <div className="text-xs text-gray-500">Completed</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-yellow-500">
-                    {employeeData.assignedTasks - employeeData.completedTasks}
+                    {pendingTasks}
                   </div>
                   <div className="text-xs text-gray-500">Pending</div>
                 </div>
@@ -501,7 +685,115 @@ const EmployeeDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+        {/* Performance Metrics Section */}
+        {performanceData && (
+          <div className="bg-white shadow rounded-lg overflow-hidden mb-6 sm:mb-8 w-full">
+            <div className="flex justify-between items-center p-4 sm:p-6 border-b">
+              <h3 className="text-lg font-medium text-gray-900">
+                Performance Metrics
+              </h3>
+              <Link
+                to="/employee/performance"
+                className="text-indigo-600 text-sm font-medium hover:text-indigo-800"
+              >
+                View Details
+              </Link>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">
+                    Task Completion Rate
+                  </h4>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {performanceData.metrics?.taskCompletionRate?.toFixed(
+                        1
+                      ) || 0}
+                      %
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{
+                        width: `${
+                          performanceData.metrics?.taskCompletionRate || 0
+                        }%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
 
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">
+                    On-Time Completion
+                  </h4>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {performanceData.metrics?.onTimeCompletionRate?.toFixed(
+                        1
+                      ) || 0}
+                      %
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{
+                        width: `${
+                          performanceData.metrics?.onTimeCompletionRate || 0
+                        }%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">
+                    Checklist Completion
+                  </h4>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {performanceData.metrics?.checklistItemCompletionRate?.toFixed(
+                        1
+                      ) || 0}
+                      %
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full"
+                      style={{
+                        width: `${
+                          performanceData.metrics
+                            ?.checklistItemCompletionRate || 0
+                        }%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">
+                    Avg. Completion Time
+                  </h4>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl font-bold text-gray-900">
+                      {performanceData.metrics?.averageCompletionTime?.toFixed(
+                        1
+                      ) || 0}{" "}
+                      days
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Average time to complete tasks
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 w-full">
           {/* Current Projects Section */}
           <div className="lg:col-span-2">
@@ -518,38 +810,59 @@ const EmployeeDashboard: React.FC = () => {
                 </Link>
               </div>
               <div className="p-4 sm:p-6">
-                {employeeData.currentProjects.map((project) => (
-                  <div key={project.id} className="mb-6 last:mb-0">
-                    <div className="flex justify-between mb-2">
-                      <div>
-                        <h4 className="text-base font-medium text-gray-900">
-                          {project.name}
-                        </h4>
-                        <p className="text-sm text-gray-500">
-                          Due: {project.dueDate}
-                        </p>
+                {employeeProjects.length > 0 ? (
+                  employeeProjects.map((project) => (
+                    <div key={project.id} className="mb-6 last:mb-0">
+                      <div className="flex justify-between mb-2">
+                        <div>
+                          <h4 className="text-base font-medium text-gray-900">
+                            {project.name}
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            Due: {project.dueDate}
+                          </p>
+                        </div>
+                        <span className="text-sm font-medium text-gray-700">
+                          {project.progress}%
+                        </span>
                       </div>
-                      <span className="text-sm font-medium text-gray-700">
-                        {project.progress}%
-                      </span>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div
+                          className={`h-2.5 rounded-full ${
+                            project.progress < 30
+                              ? "bg-red-500"
+                              : project.progress < 70
+                              ? "bg-yellow-500"
+                              : "bg-green-500"
+                          }`}
+                          style={{ width: `${project.progress}%` }}
+                        ></div>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div
-                        className={`h-2.5 rounded-full ${
-                          project.progress < 30
-                            ? "bg-red-500"
-                            : project.progress < 70
-                            ? "bg-yellow-500"
-                            : "bg-green-500"
-                        }`}
-                        style={{ width: `${project.progress}%` }}
-                      ></div>
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6">
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="1.5"
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
+                    </svg>
+                    <p className="mt-2 text-sm font-medium text-gray-600">
+                      You don't have any assigned projects yet
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
-
             {/* Upcoming Tasks Section */}
             <div className="bg-white shadow rounded-lg overflow-hidden w-full">
               <div className="flex justify-between items-center p-4 sm:p-6 border-b">
@@ -565,66 +878,89 @@ const EmployeeDashboard: React.FC = () => {
               </div>
               <div className="overflow-hidden">
                 <ul className="divide-y divide-gray-200">
-                  {employeeData.upcomingTasks.map((task) => (
-                    <li key={task.id} className="p-4 sm:p-6">
-                      <div className="flex items-center justify-between flex-wrap">
-                        <div className="flex items-center w-full sm:w-auto mb-3 sm:mb-0">
-                          <div
-                            className={`p-2 rounded-full mr-4 ${
-                              task.priority === "high"
-                                ? "bg-red-100"
-                                : task.priority === "medium"
-                                ? "bg-yellow-100"
-                                : "bg-green-100"
-                            }`}
-                          >
-                            <svg
-                              className={`h-5 w-5 ${
+                  {upcomingTasks.length > 0 ? (
+                    upcomingTasks.map((task) => (
+                      <li key={task.id} className="p-4 sm:p-6">
+                        <div className="flex items-center justify-between flex-wrap">
+                          <div className="flex items-center w-full sm:w-auto mb-3 sm:mb-0">
+                            <div
+                              className={`p-2 rounded-full mr-4 ${
                                 task.priority === "high"
-                                  ? "text-red-600"
+                                  ? "bg-red-100"
                                   : task.priority === "medium"
-                                  ? "text-yellow-600"
-                                  : "text-green-600"
+                                  ? "bg-yellow-100"
+                                  : "bg-green-100"
                               }`}
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
+                              <svg
+                                className={`h-5 w-5 ${
+                                  task.priority === "high"
+                                    ? "text-red-600"
+                                    : task.priority === "medium"
+                                    ? "text-yellow-600"
+                                    : "text-green-600"
+                                }`}
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                            </div>
+                            <div>
+                              <h4 className="text-base font-medium text-gray-900">
+                                {task.title}
+                              </h4>
+                              <p className="text-sm text-gray-500">
+                                {task.project} • Due {task.dueDate}
+                              </p>
+                            </div>
                           </div>
                           <div>
-                            <h4 className="text-base font-medium text-gray-900">
-                              {task.title}
-                            </h4>
-                            <p className="text-sm text-gray-500">
-                              {task.project} • Due {task.dueDate}
-                            </p>
+                            <span
+                              className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                task.priority === "high"
+                                  ? "bg-red-100 text-red-800"
+                                  : task.priority === "medium"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {task.priority.charAt(0).toUpperCase() +
+                                task.priority.slice(1)}
+                            </span>
                           </div>
                         </div>
-                        <div>
-                          <span
-                            className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                              task.priority === "high"
-                                ? "bg-red-100 text-red-800"
-                                : task.priority === "medium"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-green-100 text-green-800"
-                            }`}
-                          >
-                            {task.priority.charAt(0).toUpperCase() +
-                              task.priority.slice(1)}
-                          </span>
-                        </div>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="p-4 sm:p-6 text-center">
+                      <div className="py-6">
+                        <svg
+                          className="mx-auto h-12 w-12 text-gray-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="1.5"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                          />
+                        </svg>
+                        <p className="mt-2 text-sm font-medium text-gray-600">
+                          You don't have any upcoming tasks
+                        </p>
                       </div>
                     </li>
-                  ))}
+                  )}
                 </ul>
               </div>
               <div className="bg-gray-50 px-4 sm:px-6 py-4">
@@ -651,7 +987,6 @@ const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
           </div>
-
           {/* Activity Feed Section */}
           <div className="lg:col-span-1">
             <div className="bg-white shadow rounded-lg overflow-hidden h-full w-full">
@@ -661,102 +996,107 @@ const EmployeeDashboard: React.FC = () => {
                 </h3>
               </div>
               <div className="p-4 sm:p-6">
-                <ul className="space-y-6">
-                  {employeeData.recentActivity.map((activity) => (
-                    <li key={activity.id} className="relative">
-                      <div className="relative flex items-start space-x-3">
-                        <div className="relative">
-                          <div
-                            className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                              activity.type === "task_completed"
-                                ? "bg-green-100"
-                                : activity.type === "comment"
-                                ? "bg-blue-100"
-                                : activity.type === "reward"
-                                ? "bg-purple-100"
-                                : "bg-gray-100"
-                            }`}
-                          >
-                            {activity.type === "task_completed" && (
-                              <svg
-                                className="h-5 w-5 text-green-600"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            )}
-                            {activity.type === "comment" && (
-                              <svg
-                                className="h-5 w-5 text-blue-600"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                                />
-                              </svg>
-                            )}
-                            {activity.type === "reward" && (
-                              <svg
-                                className="h-5 w-5 text-purple-600"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                              </svg>
-                            )}
-                            {activity.type === "task_assigned" && (
-                              <svg
-                                className="h-5 w-5 text-gray-600"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                                />
-                              </svg>
-                            )}
+                {employeeActivities.length > 0 ? (
+                  <ul className="space-y-6">
+                    {employeeActivities.map((activity) => (
+                      <li key={activity.id} className="relative">
+                        <div className="relative flex items-start space-x-3">
+                          <div className="relative">
+                            <div
+                              className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                                activity.type === "task_completed"
+                                  ? "bg-green-100"
+                                  : activity.type === "comment"
+                                  ? "bg-blue-100"
+                                  : activity.type === "reward"
+                                  ? "bg-purple-100"
+                                  : "bg-gray-100"
+                              }`}
+                            >
+                              {activity.type === "task_completed" && (
+                                <svg
+                                  className="h-5 w-5 text-green-600"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              )}
+                              {activity.type === "comment" && (
+                                <svg
+                                  className="h-5 w-5 text-blue-600"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                                  />
+                                </svg>
+                              )}
+                              {activity.type === "reward" && (
+                                <svg
+                                  className="h-5 w-5 text-purple-600"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div>
+                              <p className="text-sm text-gray-600">
+                                {activity.description}
+                              </p>
+                              <div className="mt-1 text-xs text-gray-500">
+                                {activity.time}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div>
-                            <p className="text-sm text-gray-900">
-                              {activity.description}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              {activity.time}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-center py-6">
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="1.5"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p className="mt-2 text-sm font-medium text-gray-600">
+                      No recent activity to display
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="bg-gray-50 px-4 sm:px-6 py-4 text-center">
                 <Link
