@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import Modal from "../../components/Modal";
 import RemoveMemberModal from "../../components/RemoveMemberModal";
+import EditProjectModal from "../../components/EditProjectModal";
 import {
   getProject,
   deleteProject,
@@ -14,7 +15,7 @@ import {
   createActivity,
   type ActivityData,
   getUserData,
-  updateEmployee,
+  type ProjectData,
 } from "../../services/firebase";
 import type { TaskData } from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -27,6 +28,19 @@ import {
   generateProjectAddedMessage,
   generateTaskAssignedMessage,
 } from "../../utils/whatsappUtils";
+
+// Add interface for Project type that extends ProjectData
+interface Project extends ProjectData {
+  id: string;
+  githubRepo?: string;
+  figmaFile?: string;
+  jiraBoard?: string;
+  designSystemUrl?: string;
+  marketingBrief?: string;
+  targetAudience?: string;
+  budget?: number;
+  milestones?: Array<any>;
+}
 
 // Status color mapping
 const getStatusColor = (status: string) => {
@@ -69,7 +83,7 @@ const ProjectDetail: React.FC = () => {
   const showSuccess: NotificationFunction = useSuccessNotification();
   const showError: NotificationFunction = useErrorNotification();
 
-  const [project, setProject] = useState<any>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loadingTeam, setLoadingTeam] = useState(false);
@@ -124,23 +138,33 @@ const ProjectDetail: React.FC = () => {
     setActivitiesPage(pageNumber);
   };
 
+  // Function to fetch project data
+  const fetchProjectData = async () => {
+    if (!projectId) return;
+
+    try {
+      setLoading(true);
+      const fetchedProject = await getProject(projectId);
+      setProject(fetchedProject);
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      showError("Error", "Failed to load project details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle project field change
+  const handleProjectChange = (field: string, value: string) => {
+    if (!project) return;
+    setProject((prev) => {
+      if (!prev) return null;
+      return { ...prev, [field]: value };
+    });
+  };
+
   // Fetch project data when component mounts
   useEffect(() => {
-    const fetchProjectData = async () => {
-      if (!projectId) return;
-
-      try {
-        setLoading(true);
-        const fetchedProject = await getProject(projectId);
-        setProject(fetchedProject);
-      } catch (error) {
-        console.error("Error fetching project:", error);
-        showError("Error", "Failed to load project details");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProjectData();
   }, [projectId]);
 
@@ -284,75 +308,69 @@ const ProjectDetail: React.FC = () => {
 
   // Handle adding team members to project
   const handleAddTeamMembers = async () => {
-    if (!projectId || selectedEmployees.length === 0) return;
+    if (!project || !projectId || selectedEmployees.length === 0) return;
 
+    setAddingTeamMember(true);
     try {
-      setAddingTeamMember(true);
-
       // Get current team members
       const currentTeam = project.team || [];
 
       // Create updated team array with new members
       const updatedTeam = [...currentTeam, ...selectedEmployees];
 
-      // Update project with new team members
+      // Update the project
       await updateProject(projectId, {
         team: updatedTeam,
       });
-
-      // Save WhatsApp numbers for employees
-      for (const employeeId of selectedEmployees) {
-        const employee = availableEmployees.find(
-          (emp) => emp.id === employeeId
-        );
-        if (employee && employee.whatsappNumber) {
-          await updateEmployee(employeeId, {
-            whatsappNumber: employee.whatsappNumber,
-          });
-        }
-      }
-
-      // Log activity
-      await logProjectActivity(
-        `added ${selectedEmployees.length} team member(s) to the project`
-      );
-
-      // Send WhatsApp notifications to new team members
-      const appUrl = window.location.origin;
-      for (const employeeId of selectedEmployees) {
-        const employee = availableEmployees.find(
-          (emp) => emp.id === employeeId
-        );
-        if (employee && employee.whatsappNumber) {
-          const message = generateProjectAddedMessage(project.name, appUrl);
-          const whatsappLink = generateWhatsAppLink(
-            employee.whatsappNumber,
-            message
-          );
-
-          // Create a hidden link and click it to open WhatsApp
-          const link = document.createElement("a");
-          link.href = whatsappLink;
-          link.target = "_blank";
-          link.style.display = "none";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }
-      }
 
       // Refresh project data
       const updatedProject = await getProject(projectId);
       setProject(updatedProject);
 
+      // Add to activity log
+      await logProjectActivity(
+        `added ${selectedEmployees.length} team member(s)`
+      );
+
+      // Reset state
+      setSelectedEmployees([]);
+      setShowAddMemberModal(false);
+
+      // Show success notification
       showSuccess(
         "Team Updated",
-        "New team members have been added to the project"
+        `Successfully added ${selectedEmployees.length} team member(s)`
       );
-      setShowAddMemberModal(false);
+
+      // Send WhatsApp notification to each new team member if app URL is available
+      const appUrl = window.location.origin;
+
+      // Notify each new team member
+      for (const employeeId of selectedEmployees) {
+        try {
+          const employee = await getEmployee(employeeId);
+          // Check if employee has whatsappNumber property and it has a value
+          if (
+            employee &&
+            "whatsappNumber" in employee &&
+            employee.whatsappNumber &&
+            project
+          ) {
+            const message = generateProjectAddedMessage(project.name, appUrl);
+            const whatsappLink = generateWhatsAppLink(
+              employee.whatsappNumber as string,
+              message
+            );
+            window.open(whatsappLink, "_blank");
+          }
+        } catch (err) {
+          console.error("Error sending WhatsApp notification:", err);
+          // Don't fail the whole operation if notifications fail
+        }
+      }
     } catch (error) {
       console.error("Error adding team members:", error);
-      showError("Error", "Failed to add team members to the project");
+      showError("Error", "Failed to add team members");
     } finally {
       setAddingTeamMember(false);
     }
@@ -373,7 +391,7 @@ const ProjectDetail: React.FC = () => {
 
   // Handle adding a new task
   const handleAddTask = async () => {
-    if (!projectId || !userData) return;
+    if (!project || !projectId || !userData?.id) return;
 
     // Basic validation
     if (
@@ -385,71 +403,31 @@ const ProjectDetail: React.FC = () => {
       return;
     }
 
+    setAddingTask(true);
     try {
-      setAddingTask(true);
-
-      const newTask: TaskData = {
-        title: taskFormData.title || "",
+      // Create the task
+      await createTask({
+        title: taskFormData.title,
         description: taskFormData.description || "",
         projectId: projectId,
-        assignedTo: taskFormData.assignedTo || "",
-        status: (taskFormData.status as TaskData["status"]) || "Not Started",
-        priority: (taskFormData.priority as TaskData["priority"]) || "Medium",
-        dueDate: taskFormData.dueDate || new Date().toISOString().split("T")[0],
+        assignedTo: taskFormData.assignedTo,
+        status: taskFormData.status as "Not Started",
+        priority: taskFormData.priority as "Medium",
+        dueDate: taskFormData.dueDate,
         createdBy: userData.id,
-      };
-
-      await createTask(newTask);
-
-      // Find the assigned team member
-      const assignedMember = teamMembers.find(
-        (member) => member.id === taskFormData.assignedTo
-      );
-      const assigneeName = assignedMember
-        ? assignedMember.name
-        : "a team member";
-
-      // Save WhatsApp number if provided
-      if (assignedMember && assignedMember.whatsappNumber) {
-        await updateEmployee(assignedMember.id, {
-          whatsappNumber: assignedMember.whatsappNumber,
-        });
-      }
+      });
 
       // Log activity
-      await logProjectActivity(
-        `assigned task "${taskFormData.title}" to ${assigneeName}`
-      );
+      await logProjectActivity(`added a new task: ${taskFormData.title}`);
 
-      // Send WhatsApp notification to the assigned team member
-      if (assignedMember && assignedMember.whatsappNumber) {
-        const appUrl = window.location.origin;
-        const message = generateTaskAssignedMessage(
-          taskFormData.title,
-          project.name,
-          new Date(taskFormData.dueDate).toLocaleDateString(),
-          appUrl
-        );
-        const whatsappLink = generateWhatsAppLink(
-          assignedMember.whatsappNumber,
-          message
-        );
-
-        // Create a hidden link and click it to open WhatsApp
-        const link = document.createElement("a");
-        link.href = whatsappLink;
-        link.target = "_blank";
-        link.style.display = "none";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-
-      // Refresh tasks
+      // Refresh task list
       const updatedTasks = await getTasks(projectId);
       setProjectTasks(updatedTasks);
 
-      // Reset form
+      // Show success message
+      showSuccess("Task Created", "The task has been created successfully");
+
+      // Reset form and close modal
       setTaskFormData({
         title: "",
         description: "",
@@ -458,12 +436,37 @@ const ProjectDetail: React.FC = () => {
         status: "Not Started",
         priority: "Medium",
       });
-
-      showSuccess("Task Created", "New task has been added to the project");
       setShowAddTaskModal(false);
+
+      // Send WhatsApp notification to assigned employee
+      if (taskFormData.assignedTo) {
+        try {
+          const employee = await getEmployee(taskFormData.assignedTo);
+          if (
+            employee &&
+            "whatsappNumber" in employee &&
+            employee.whatsappNumber
+          ) {
+            const message = generateTaskAssignedMessage(
+              taskFormData.title,
+              project.name,
+              new Date(taskFormData.dueDate).toLocaleDateString(),
+              window.location.origin
+            );
+            const whatsappLink = generateWhatsAppLink(
+              employee.whatsappNumber as string,
+              message
+            );
+            window.open(whatsappLink, "_blank");
+          }
+        } catch (error) {
+          console.error("Error sending WhatsApp notification:", error);
+          // Don't fail the task creation if notification fails
+        }
+      }
     } catch (error) {
       console.error("Error adding task:", error);
-      showError("Error", "Failed to add task to the project");
+      showError("Error", "Failed to create task");
     } finally {
       setAddingTask(false);
     }
@@ -502,50 +505,42 @@ const ProjectDetail: React.FC = () => {
 
   // Handle removing a team member from project
   const handleRemoveTeamMember = async (memberId: string) => {
-    if (!projectId) return;
+    if (!project || !projectId) return;
+
+    setRemovingMember(true);
+    // Get current team members
+    const currentTeam = project.team || [];
+
+    // Get the member's name for activity logging
+    const memberToRemove = teamMembers.find((member) => member.id === memberId);
+    const memberName = memberToRemove ? memberToRemove.name : "a member";
 
     try {
-      setRemovingMember(true);
-      // Get current team members
-      const currentTeam = project.team || [];
+      // Filter out the member to remove
+      const updatedTeam = currentTeam.filter((id) => id !== memberId);
 
-      // Get the member's name for activity logging
-      const memberToRemove = teamMembers.find(
-        (member) => member.id === memberId
-      );
-      const memberName = memberToRemove ? memberToRemove.name : "team member";
-
-      // Create updated team array without the removed member
-      const updatedTeamArray = currentTeam.filter((id: any) => id !== memberId);
-
-      // Update project with new team members
+      // Update the project
       await updateProject(projectId, {
-        team: updatedTeamArray,
+        team: updatedTeam,
       });
 
       // Log activity
-      await logProjectActivity(`removed ${memberName} from the project team`);
+      await logProjectActivity(`removed ${memberName} from the team`);
 
       // Refresh project data
       const updatedProject = await getProject(projectId);
       setProject(updatedProject);
 
-      // Close member detail modal if open
-      if (selectedMember && selectedMember.id === memberId) {
-        setShowMemberDetailModal(false);
-      }
-
+      setShowRemoveMemberModal(false);
       showSuccess(
         "Team Updated",
-        `${memberName} has been removed from the project`
+        `${memberName} has been removed from the team`
       );
     } catch (error) {
       console.error("Error removing team member:", error);
-      showError("Error", "Failed to remove team member from the project");
+      showError("Error", "Failed to remove team member");
     } finally {
       setRemovingMember(false);
-      setShowRemoveMemberModal(false);
-      setMemberToRemove(null);
     }
   };
 
@@ -854,6 +849,152 @@ const ProjectDetail: React.FC = () => {
                   </div>
                 </div>
               )}
+
+               {/* Category-specific information section */}
+      {project && (
+        <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">
+              Project Extra Information
+            </h3>
+          </div>
+          <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
+            <dl className="sm:divide-y sm:divide-gray-200">
+              {/* Show different fields based on category */}
+              {project.category === "Development" && (
+                <>
+                  {project.githubRepo && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        GitHub Repository
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        <a
+                          href={project.githubRepo}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900 break-all"
+                        >
+                          {project.githubRepo}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {project.figmaFile && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Figma File
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        <a
+                          href={project.figmaFile}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900 break-all"
+                        >
+                          {project.figmaFile}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {project.jiraBoard && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Jira Board
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        <a
+                          href={project.jiraBoard}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900 break-all"
+                        >
+                          {project.jiraBoard}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </>
+              )}
+              {project.category === "Design" && (
+                <>
+                  {project.figmaFile && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Figma File
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        <a
+                          href={project.figmaFile}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900 break-all"
+                        >
+                          {project.figmaFile}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {project.designSystemUrl && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Design System
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        <a
+                          href={project.designSystemUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900 break-all"
+                        >
+                          {project.designSystemUrl}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </>
+              )}
+              {project.category === "Marketing" && (
+                <>
+                  {project.marketingBrief && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Marketing Brief
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 whitespace-pre-wrap">
+                        {project.marketingBrief}
+                      </dd>
+                    </div>
+                  )}
+                  {project.targetAudience && (
+                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                      <dt className="text-sm font-medium text-gray-500">
+                        Target Audience
+                      </dt>
+                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                        {project.targetAudience}
+                      </dd>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* Show a message if no extra information is available */}
+              {!project.githubRepo &&
+                !project.figmaFile &&
+                !project.jiraBoard &&
+                !project.designSystemUrl &&
+                !project.marketingBrief &&
+                !project.targetAudience && (
+                  <div className="py-4 sm:py-5 sm:px-6">
+                    <p className="text-sm text-gray-500 italic">
+                      No additional information available for this project.
+                    </p>
+                  </div>
+                )}
+            </dl>
+          </div>
+        </div>
+      )}
             </div>
 
             {/* Sidebar */}
@@ -1551,197 +1692,47 @@ const ProjectDetail: React.FC = () => {
       </div>
 
       {/* Edit Project Modal */}
-      <Modal
-        isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
-        title="Edit Project"
-        size="large"
-        actions={
-          <>
-            <button
-              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={() => setShowEditModal(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="ml-3 px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              onClick={async () => {
-                try {
-                  const titleInput = document.getElementById(
-                    "project-title"
-                  ) as HTMLInputElement;
-                  const descriptionInput = document.getElementById(
-                    "description"
-                  ) as HTMLTextAreaElement;
-                  const statusInput = document.getElementById(
-                    "status"
-                  ) as HTMLSelectElement;
+      {project && (
+        <EditProjectModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onRefresh={fetchProjectData}
+          onConfirm={async () => {
+            try {
+              if (!projectId) return;
 
-                  if (titleInput && statusInput) {
-                    // Update the project
-                    await updateProject(projectId!, {
-                      name: titleInput.value,
-                      description:
-                        descriptionInput?.value || project.description,
-                      status: statusInput.value,
-                    });
+              await updateProject(projectId, {
+                ...project,
+                ...(project.githubRepo && { githubRepo: project.githubRepo }),
+                ...(project.figmaFile && { figmaFile: project.figmaFile }),
+                ...(project.jiraBoard && { jiraBoard: project.jiraBoard }),
+                ...(project.designSystemUrl && {
+                  designSystemUrl: project.designSystemUrl,
+                }),
+                ...(project.marketingBrief && {
+                  marketingBrief: project.marketingBrief,
+                }),
+                ...(project.targetAudience && {
+                  targetAudience: project.targetAudience,
+                }),
+              });
+              setShowEditModal(false);
+              showSuccess("Success", "Project updated successfully");
 
-                    // Log the activity
-                    await logProjectActivity(`updated the project details`);
+              // Refresh project data
+              await fetchProjectData();
 
-                    // Refresh project data
-                    const updatedProject = await getProject(projectId!);
-                    setProject(updatedProject);
-
-                    showSuccess(
-                      "Project Updated",
-                      "The project has been updated successfully"
-                    );
-                  }
-                } catch (error) {
-                  console.error("Error updating project:", error);
-                  showError("Error", "Failed to update project");
-                }
-
-                setShowEditModal(false);
-              }}
-            >
-              Save Changes
-            </button>
-          </>
-        }
-      >
-        <div className="py-4 space-y-4">
-          <div>
-            <label
-              htmlFor="project-title"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Project Title
-            </label>
-            <input
-              type="text"
-              id="project-title"
-              defaultValue={project.name || ""}
-              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Description
-            </label>
-            <textarea
-              id="description"
-              rows={3}
-              defaultValue={project.description}
-              className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="start-date"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Start Date
-              </label>
-              <input
-                type="date"
-                id="start-date"
-                defaultValue={project.startDate}
-                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="end-date"
-                className="block text-sm font-medium text-gray-700"
-              >
-                End Date
-              </label>
-              <input
-                type="date"
-                id="end-date"
-                defaultValue={project.endDate}
-                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="status"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Status
-              </label>
-              <select
-                id="status"
-                defaultValue={project.status}
-                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              >
-                <option>Not Started</option>
-                <option>Just Started</option>
-                <option>In Progress</option>
-                <option>Almost Complete</option>
-                <option>Completed</option>
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="priority"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Priority
-              </label>
-              <select
-                id="priority"
-                defaultValue={project.priority}
-                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label
-              htmlFor="budget"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Budget
-            </label>
-            <div className="mt-1 relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
-              </div>
-              <input
-                type="text"
-                id="budget"
-                defaultValue={project.budget || ""}
-                className="mt-1 pl-7 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-              />
-            </div>
-          </div>
-          <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              className="text-red-600 hover:text-red-900 text-sm font-medium"
-              onClick={() => {
-                setShowEditModal(false);
-                setShowDeleteProjectModal(true);
-              }}
-            >
-              Delete Project
-            </button>
-          </div>
-        </div>
-      </Modal>
+              // Log the activity
+              await logProjectActivity("updated the project details");
+            } catch (error) {
+              console.error("Error updating project:", error);
+              showError("Error", "Failed to update project");
+            }
+          }}
+          project={project}
+          onChange={handleProjectChange}
+        />
+      )}
 
       {/* Delete Project Confirmation Modal */}
       <Modal

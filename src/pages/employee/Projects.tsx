@@ -43,6 +43,13 @@ interface ProjectData {
   tasks: ProjectTask[];
   recentUpdates: ProjectUpdate[];
   daysLeft?: number;
+  category?: string;
+  githubRepo?: string;
+  figmaFile?: string;
+  jiraBoard?: string;
+  designSystemUrl?: string;
+  marketingBrief?: string;
+  targetAudience?: string;
 }
 
 const Projects = () => {
@@ -152,7 +159,7 @@ const Projects = () => {
                 }
 
                 // Calculate days left
-                const daysLeft = calculateDaysLeft(project.endDate);
+                calculateDaysLeft(project.endDate);
 
                 console.log("Processing project:", project.id, project.name);
 
@@ -200,12 +207,12 @@ const Projects = () => {
                       member.avatar ||
                       "https://randomuser.me/api/portraits/men/1.jpg",
                   })),
-                  // Use real task data instead of mock data
                   tasks: projectTasks.map((task: any) => ({
                     id: task.id,
                     title: task.title,
                     status: task.status || "To Do",
                     assigned: true,
+                    projectId: task.projectId,
                   })),
                   recentUpdates: Array.isArray(project.activities)
                     ? project.activities.map((activity: any) => ({
@@ -218,7 +225,15 @@ const Projects = () => {
                           formatActivityTime(activity.timestamp?.toDate()),
                       }))
                     : [],
-                  daysLeft,
+                  daysLeft: calculateDaysLeft(project.endDate),
+                  // Category-specific fields
+                  category: project.category,
+                  githubRepo: project.githubRepo,
+                  figmaFile: project.figmaFile,
+                  jiraBoard: project.jiraBoard,
+                  designSystemUrl: project.designSystemUrl,
+                  marketingBrief: project.marketingBrief,
+                  targetAudience: project.targetAudience,
                 };
               })
               .filter(Boolean) as ProjectData[]; // Remove any null entries and cast to correct type
@@ -923,14 +938,13 @@ const Projects = () => {
                         <img
                           src={selectedProject.manager.avatar}
                           alt={selectedProject.manager.name}
-                          className="h-8 w-8 rounded-full mr-2"
+                          className="w-8 h-8 rounded-full mr-3"
                         />
-                        <span className="text-sm text-gray-900">
+                        <span className="text-gray-900 font-medium">
                           {selectedProject.manager.name}
                         </span>
                       </div>
                     </div>
-
                     <div>
                       <h4 className="text-sm font-medium text-gray-500">
                         Timeline
@@ -938,7 +952,7 @@ const Projects = () => {
                       <div className="mt-1 grid grid-cols-2 gap-2">
                         <div>
                           <p className="text-xs text-gray-500">Start Date</p>
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm font-medium text-gray-900">
                             {new Date(
                               selectedProject.startDate
                             ).toLocaleDateString()}
@@ -946,93 +960,189 @@ const Projects = () => {
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Deadline</p>
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm font-medium text-gray-900">
                             {new Date(
                               selectedProject.deadline
                             ).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
+                      {selectedProject.daysLeft !== undefined && (
+                        <div className="mt-2">
+                          <span
+                            className={`text-xs px-2 py-1 rounded font-medium ${
+                              selectedProject.daysLeft < 0
+                                ? "bg-red-100 text-red-800"
+                                : selectedProject.daysLeft <= 7
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {selectedProject.daysLeft < 0
+                              ? `Overdue by ${Math.abs(
+                                  selectedProject.daysLeft
+                                )} days`
+                              : selectedProject.daysLeft === 0
+                              ? "Due today"
+                              : `${selectedProject.daysLeft} days left`}
+                          </span>
+                        </div>
+                      )}
                     </div>
-
                     <div>
                       <h4 className="text-sm font-medium text-gray-500">
-                        Days Remaining
+                        Team Size
                       </h4>
-                      <div className="mt-1">
-                        <p
-                          className={`text-lg font-semibold ${
-                            calculateDaysLeft(selectedProject.deadline) <= 0
-                              ? "text-red-600"
-                              : calculateDaysLeft(selectedProject.deadline) < 7
-                              ? "text-orange-600"
-                              : "text-green-600"
-                          }`}
-                        >
-                          {calculateDaysLeft(selectedProject.deadline) > 0
-                            ? `${calculateDaysLeft(
-                                selectedProject.deadline
-                              )} days`
-                            : "Overdue"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-500">
-                        Client
-                      </h4>
-                      <p className="mt-1 text-sm text-gray-900">
-                        {selectedProject.client}
+                      <p className="text-sm font-medium text-gray-900 mt-1">
+                        {selectedProject.team.length} members
                       </p>
                     </div>
 
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-500">
-                        Tasks
-                      </h4>
-                      <div className="mt-1 grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-gray-100 rounded p-2">
-                          <p className="text-xs text-gray-500">To Do</p>
-                          <p className="text-sm font-medium">
-                            {
-                              selectedProject.tasks.filter(
-                                (t: any) => t.status === "To Do"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                        <div className="bg-indigo-50 rounded p-2">
-                          <p className="text-xs text-gray-500">In Progress</p>
-                          <p className="text-sm font-medium">
-                            {
-                              selectedProject.tasks.filter(
-                                (t: any) => t.status === "In Progress"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                        <div className="bg-green-50 rounded p-2">
-                          <p className="text-xs text-gray-500">Completed</p>
-                          <p className="text-sm font-medium">
-                            {
-                              selectedProject.tasks.filter(
-                                (t: any) => t.status === "Completed"
-                              ).length
-                            }
-                          </p>
+                    {/* Project Extra Information Section */}
+                    {selectedProject.category && (
+                      <div className="pt-4 border-t border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">
+                          Project Extra Information
+                        </h4>
+
+                        <div className="space-y-3">
+                          {selectedProject.category && (
+                            <div>
+                              <p className="text-xs text-gray-500">Category</p>
+                              <p className="text-sm font-medium text-gray-900">
+                                {selectedProject.category}
+                              </p>
+                            </div>
+                          )}
+
+                          {selectedProject.category === "Development" && (
+                            <>
+                              {selectedProject.githubRepo && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    GitHub Repository
+                                  </p>
+                                  <a
+                                    href={selectedProject.githubRepo}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900 break-all"
+                                  >
+                                    {selectedProject.githubRepo}
+                                  </a>
+                                </div>
+                              )}
+
+                              {selectedProject.figmaFile && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Figma File
+                                  </p>
+                                  <a
+                                    href={selectedProject.figmaFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900 break-all"
+                                  >
+                                    {selectedProject.figmaFile}
+                                  </a>
+                                </div>
+                              )}
+
+                              {selectedProject.jiraBoard && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Jira Board
+                                  </p>
+                                  <a
+                                    href={selectedProject.jiraBoard}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900 break-all"
+                                  >
+                                    {selectedProject.jiraBoard}
+                                  </a>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {selectedProject.category === "Design" && (
+                            <>
+                              {selectedProject.figmaFile && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Figma File
+                                  </p>
+                                  <a
+                                    href={selectedProject.figmaFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900 break-all"
+                                  >
+                                    {selectedProject.figmaFile}
+                                  </a>
+                                </div>
+                              )}
+
+                              {selectedProject.designSystemUrl && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Design System
+                                  </p>
+                                  <a
+                                    href={selectedProject.designSystemUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-900 break-all"
+                                  >
+                                    {selectedProject.designSystemUrl}
+                                  </a>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {selectedProject.category === "Marketing" && (
+                            <>
+                              {selectedProject.marketingBrief && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Marketing Brief
+                                  </p>
+                                  <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                                    {selectedProject.marketingBrief}
+                                  </p>
+                                </div>
+                              )}
+
+                              {selectedProject.targetAudience && (
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Target Audience
+                                  </p>
+                                  <p className="text-sm text-gray-900">
+                                    {selectedProject.targetAudience}
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {!selectedProject.githubRepo &&
+                            !selectedProject.figmaFile &&
+                            !selectedProject.jiraBoard &&
+                            !selectedProject.designSystemUrl &&
+                            !selectedProject.marketingBrief &&
+                            !selectedProject.targetAudience && (
+                              <p className="text-xs text-gray-500 italic">
+                                No additional information available for this
+                                project.
+                              </p>
+                            )}
                         </div>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 pt-6 border-t">
-                    <Link
-                      to="/employee/timetracking"
-                      className="text-sm text-gray-500 hover:text-gray-700"
-                    >
-                      View Time Tracking
-                    </Link>
+                    )}
                   </div>
                 </div>
               </div>
