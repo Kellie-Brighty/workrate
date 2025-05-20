@@ -14,9 +14,6 @@ import {
   getEmployeesPerformance,
   onEmployeePerformanceUpdate,
   recalculateAllProjectsProgress,
-  getEmployee,
-  getEmployeeProjects,
-  getEmployeeTasks,
 } from "../../services/firebase";
 
 // Dashboard interface
@@ -98,13 +95,16 @@ interface EmployeePerformanceData {
 
 const EmployerDashboard: React.FC = () => {
   // Auth context
-  const { userData, logout } = useAuth() as {
-    userData: { id: string; email: string } | null;
-    logout: () => Promise<void>;
-  };
+  const { userData, logout } = useAuth();
   const navigate = useNavigate();
   const showError = useErrorNotification();
   const showSuccess = useSuccessNotification();
+
+  // Check if user is a manager
+  const isManager = userData?.userType === "manager";
+
+  // Get the relevant employer ID (either the user's ID or the manager's employerId)
+  const relevantEmployerId = isManager ? userData?.employerId : userData?.id;
 
   // State
   const [loading, setLoading] = useState(true);
@@ -143,58 +143,63 @@ const EmployerDashboard: React.FC = () => {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // Fetch dashboard data
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!userData) return;
+      if (!userData?.id || !relevantEmployerId) return;
 
       try {
         setLoading(true);
 
-        // Explicitly type userData to fix type issues
-        const typedUserData = userData as { id: string; email: string };
-
-        // Get projects for this employer
-        const userProjects = await getProjects();
-        const filteredProjects = userProjects.filter(
-          (p: any) => p.createdBy === typedUserData.id
+        // Get all projects for this employer
+        const projectsData = await getProjects(userData.id);
+        const filteredProjects = projectsData.filter(
+          (project: any) => project.createdBy === relevantEmployerId
         );
 
-        // Fetch employees count
-        const employeesData = await getEmployees(typedUserData.id);
-        // Type assertion for employee data
+        // Get all tasks for this employer's projects
+        const projectIds = filteredProjects.map((project: any) => project.id);
+        const userTasks = await Promise.all(
+          projectIds.map((projectId: string) => getTasks(projectId))
+        );
+        const allTasks = userTasks.flat();
+
+        // Get all employees for this employer
+        const employeesData = await getEmployees(relevantEmployerId);
         const activeEmployees = employeesData.filter(
           (emp: any) => emp.status === "active"
         ).length;
 
-        // Fetch tasks
-        const tasksData = await getTasks();
-        // Type assertion for task data
-        const userTasks = tasksData.filter((task: any) =>
-          filteredProjects.some((p: any) => p.id === task.projectId)
-        );
-
-        // Calculate stats
-        const completedTasks = userTasks.filter(
+        // Calculate task statistics
+        const completedTasks = allTasks.filter(
           (task: any) => task.status === "Completed"
         ).length;
-        const pendingTasks = userTasks.length - completedTasks;
+        const pendingTasks = allTasks.filter(
+          (task: any) => task.status !== "Completed"
+        ).length;
 
-        const now = new Date();
+        // Calculate project statistics
         const overdueProjects = filteredProjects.filter((project: any) => {
           const endDate = new Date(project.endDate);
-          return endDate < now && project.status !== "Completed";
+          return (
+            endDate < new Date() &&
+            (!project.status || project.status !== "Completed")
+          );
         }).length;
 
-        // Get upcoming deadlines (projects due in next 7 days)
-        const sevenDaysFromNow = new Date();
-        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
         const upcomingDeadlines = filteredProjects.filter((project: any) => {
           const endDate = new Date(project.endDate);
-          return endDate > now && endDate <= sevenDaysFromNow;
+          const now = new Date();
+          const daysUntilDue = Math.ceil(
+            (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return (
+            daysUntilDue <= 7 &&
+            daysUntilDue > 0 &&
+            (!project.status || project.status !== "Completed")
+          );
         }).length;
 
-        // Mock recent projects for now
+        // Get recent projects
         const recentProjects = filteredProjects
           .slice(0, 3)
           .map((project: any) => ({
@@ -205,84 +210,64 @@ const EmployerDashboard: React.FC = () => {
           }));
 
         // Get employee performance data
-        const employeesPerformance = (await getEmployeesPerformance(
-          typedUserData.id
-        )) as any[];
+        const employeesPerformance = await getEmployeesPerformance(userData.id);
 
         // Find the top performer with highest progress score
         let topPerformerData = null;
         if (employeesPerformance.length > 0) {
-          // Filter to only include employees with valid metrics data and cast to known type
           const performersWithMetrics = employeesPerformance
-            .filter(
-              (emp) =>
-                emp &&
-                typeof emp.metrics === "object" &&
-                emp.metrics?.progressScore > 0
-            )
-            .map((emp) => emp as unknown as EmployeePerformanceData);
+            .filter((emp: any) => {
+              if (!emp || typeof emp.metrics !== "object") return false;
+              return emp.metrics?.progressScore > 0;
+            })
+            .map((emp) => emp as EmployeePerformanceData);
 
           if (performersWithMetrics.length > 0) {
-            // Now TypeScript knows the shape of these objects
             const sortedPerformers = [...performersWithMetrics].sort(
               (a, b) => b.metrics.progressScore - a.metrics.progressScore
             );
 
             const topPerformer = sortedPerformers[0];
 
-            // Get employee-specific project data
-            const employeeId = topPerformer.employeeId || topPerformer.id || "";
-            const employeeData = (await getEmployee(employeeId)) as any;
-            const employeeProjects = await getEmployeeProjects(employeeId);
-
-            // Get employee tasks data
-            const userTasks = await getEmployeeTasks(employeeId);
-
-            topPerformerData = {
-              name: employeeData?.name || topPerformer.employeeName,
-              title: employeeData?.position || topPerformer.employeePosition,
-              avatar: employeeData?.avatar || topPerformer.employeeAvatar,
-              completionRate: topPerformer.metrics.taskCompletionRate,
-              projects: employeeProjects.length,
-              completedTasks:
-                topPerformer.metrics.completedTasksCount ||
-                userTasks.filter((task: any) => task.status === "Completed")
-                  .length,
-            };
+            if (
+              topPerformer.employeeName &&
+              topPerformer.employeePosition &&
+              topPerformer.employeeAvatar
+            ) {
+              topPerformerData = {
+                name: topPerformer.employeeName,
+                title: topPerformer.employeePosition,
+                avatar: topPerformer.employeeAvatar,
+                completionRate: topPerformer.metrics.taskCompletionRate,
+                projects: projectIds.length,
+                completedTasks: topPerformer.metrics.completedTasksCount,
+              };
+            }
           }
         }
 
         // Update dashboard data
         setDashboardData({
-          ...dashboardData,
           employees: activeEmployees,
           projects: filteredProjects.length,
-          tasks: userTasks.length,
+          tasks: allTasks.length,
           completedTasks,
           pendingTasks,
           overdueProjects,
           upcomingDeadlines,
           topPerformer: topPerformerData,
-          recentProjects: recentProjects || [],
+          recentProjects,
         });
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
-        // @ts-ignore - Ignore type checking for this call
         showError("Error", "Failed to load dashboard data");
-
-        // In case of error, ensure recentProjects is at least an empty array
-        setDashboardData((prev) => ({
-          ...prev,
-          recentProjects: [],
-          topPerformer: null,
-        }));
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, [userData]);
+  }, [userData?.id, relevantEmployerId]);
 
   // Real-time listener for top performer updates
   useEffect(() => {

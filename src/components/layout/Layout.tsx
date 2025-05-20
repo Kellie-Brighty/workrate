@@ -1,26 +1,32 @@
 import React, { type ReactNode, useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface LayoutProps {
   children: ReactNode;
-  userType: "employer" | "employee";
+  userType: "employer" | "employee" | "manager";
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, userType }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+  const { userData } = useAuth();
+
+  // If user is a manager, treat them as an employer but with restrictions
+  const effectiveUserType =
+    userData?.userType === "manager" ? "employer" : userType;
 
   // Close sidebar when location changes (for mobile navigation)
   useEffect(() => {
-    setSidebarOpen(false);
+    setIsSidebarOpen(false);
   }, [location]);
 
   // Close sidebar when screen resizes to desktop
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
-        setSidebarOpen(false);
+        setIsSidebarOpen(false);
       }
     };
 
@@ -33,10 +39,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userType }) => {
       {/* Mobile sidebar toggle */}
       <div className="fixed top-4 left-4 z-50 md:hidden">
         <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="bg-indigo-600 text-white p-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
-          {sidebarOpen ? (
+          {isSidebarOpen ? (
             <svg
               className="h-6 w-6"
               xmlns="http://www.w3.org/2000/svg"
@@ -71,23 +77,23 @@ const Layout: React.FC<LayoutProps> = ({ children, userType }) => {
       </div>
 
       {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
+      {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-gray-600 bg-opacity-50 z-40 md:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setIsSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
       <div
         className={`fixed left-0 top-0 h-full z-50 transform transition-transform duration-300 ease-in-out md:relative md:z-30 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
         <Sidebar
-          userType={userType}
-          isOpen={sidebarOpen}
-          onCloseMobile={() => setSidebarOpen(false)}
+          userType={effectiveUserType}
+          isOpen={isSidebarOpen}
+          onCloseMobile={() => setIsSidebarOpen(false)}
         />
       </div>
 

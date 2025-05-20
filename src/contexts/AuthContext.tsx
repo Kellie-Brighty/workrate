@@ -21,7 +21,8 @@ interface UserData {
   email: string;
   fullName: string;
   companyName?: string;
-  userType: "employer" | "employee";
+  userType: "employer" | "employee" | "manager";
+  employerId?: string; // Added to track which employer a manager works for
   createdAt: Date;
 }
 
@@ -38,7 +39,8 @@ interface AuthContextType {
     userData: {
       companyName?: string;
       fullName: string;
-      userType: "employer" | "employee";
+      userType: "employer" | "employee" | "manager";
+      employerId?: string;
     }
   ) => Promise<User>;
   logout: () => Promise<void>;
@@ -143,7 +145,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     userData: {
       companyName?: string;
       fullName: string;
-      userType: "employer" | "employee";
+      userType: "employer" | "employee" | "manager";
+      employerId?: string;
     }
   ): Promise<User> => {
     try {

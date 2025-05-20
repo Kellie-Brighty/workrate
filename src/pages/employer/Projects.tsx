@@ -60,6 +60,12 @@ const Projects: React.FC = () => {
   const showSuccess = useSuccessNotification();
   const showError = useErrorNotification();
 
+  // Check if user is a manager
+  const isManager = userData?.userType === "manager";
+
+  // Get the relevant employer ID (either the user's ID or the manager's employerId)
+  const relevantEmployerId = isManager ? userData?.employerId : userData?.id;
+
   // Fetch projects on component mount
   useEffect(() => {
     const fetchProjects = async () => {
@@ -67,13 +73,10 @@ const Projects: React.FC = () => {
         setLoading(true);
         const projectsData = await getProjects();
 
-        // If current user is an employer, filter to only show their projects
-        const filteredProjects =
-          userData?.userType === "employer"
-            ? projectsData.filter(
-                (project: any) => project.createdBy === userData.id
-              )
-            : projectsData;
+        // Filter projects based on the relevant employer ID
+        const filteredProjects = projectsData.filter(
+          (project: any) => project.createdBy === relevantEmployerId
+        );
 
         setProjects(filteredProjects);
       } catch (error) {
@@ -85,7 +88,7 @@ const Projects: React.FC = () => {
     };
 
     fetchProjects();
-  }, [userData?.id]);
+  }, [relevantEmployerId]);
 
   // Add effect to recalculate project progress when the component loads
   useEffect(() => {

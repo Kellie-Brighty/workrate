@@ -51,7 +51,6 @@ interface UserData {
   [key: string]: any; // Allow other properties
 }
 
-
 // Helper function to calculate time remaining
 const calculateTimeRemaining = (
   dueDate: string

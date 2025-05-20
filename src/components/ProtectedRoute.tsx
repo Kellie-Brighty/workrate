@@ -4,12 +4,14 @@ import { useAuth } from "../contexts/AuthContext";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: "employer" | "employee";
+  requiredRole?: "employer" | "employee" | "manager";
+  allowManager?: boolean;
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
+  allowManager = true,
 }) => {
   const { currentUser, userData, loading } = useAuth();
   const location = useLocation();
@@ -28,10 +30,25 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // If requiredRole is specified and userData is loaded, check if the user has the correct role
-  if (requiredRole && userData && userData.userType !== requiredRole) {
-    // Redirect to the appropriate dashboard based on the user's actual role
-    return <Navigate to={`/${userData.userType}/dashboard`} replace />;
+  if (requiredRole && userData) {
+    // Allow managers to access employer routes if allowManager is true
+    if (
+      requiredRole === "employer" &&
+      userData.userType === "manager" &&
+      allowManager
+    ) {
+      return <>{children}</>;
+    }
+
+    // Block managers from employee routes
+    if (requiredRole === "employee" && userData.userType === "manager") {
+      return <Navigate to="/employer/dashboard" replace />;
+    }
+
+    // Regular role check
+    if (userData.userType !== requiredRole) {
+      return <Navigate to={`/${userData.userType}/dashboard`} replace />;
+    }
   }
 
   return <>{children}</>;

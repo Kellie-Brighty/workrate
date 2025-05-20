@@ -64,7 +64,8 @@ export const registerWithEmailAndPassword = async (
   userData: {
     companyName?: string;
     fullName: string;
-    userType: "employer" | "employee";
+    userType: "employer" | "employee" | "manager";
+    employerId?: string;
   },
   disableAutoSignIn = false
 ): Promise<UserCredential> => {
@@ -105,7 +106,7 @@ export const loginWithGoogle = async (): Promise<UserCredential> => {
     await setDoc(doc(db, "users", result.user.uid), {
       email: result.user.email,
       fullName: result.user.displayName,
-      userType: "employer", // Default role for Google sign-ins
+      userType: "employer" as "employer" | "employee" | "manager", // Default role for Google sign-ins
       createdAt: new Date(),
     });
   }
@@ -234,10 +235,37 @@ export const getProject = async (
   }
 };
 
-export const getProjects = async () => {
+// Add a function to get employer ID for a user (either their own ID if employer, or their employerId if manager)
+const getRelevantEmployerId = async (userId: string) => {
+  const userDoc = await getDoc(doc(db, "users", userId));
+  if (!userDoc.exists()) return null;
+
+  const userData = userDoc.data();
+  return userData.userType === "manager" ? userData.employerId : userId;
+};
+
+// Modify getProjects to handle manager access
+export const getProjects = async (userId?: string) => {
   try {
-    const projectsRef = collection(db, "projects");
-    const projectsSnap = await getDocs(projectsRef);
+    if (!userId) {
+      const projectsRef = collection(db, "projects");
+      const projectsSnap = await getDocs(projectsRef);
+      return projectsSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+    }
+
+    // Get the relevant employer ID
+    const employerId = await getRelevantEmployerId(userId);
+    if (!employerId) return [];
+
+    // Get projects for this employer
+    const projectsQuery = query(
+      collection(db, "projects"),
+      where("createdBy", "==", employerId)
+    );
+    const projectsSnap = await getDocs(projectsQuery);
 
     return projectsSnap.docs.map((doc) => ({
       id: doc.id,
@@ -639,6 +667,7 @@ export const updateEmployee = async (
   }
 };
 
+// Modify getEmployees to handle manager access
 export const getEmployees = async (employerId?: string) => {
   try {
     let employeesQuery;
@@ -875,38 +904,83 @@ export const getProjectActivities = async (projectId: string) => {
 // Real-time task functions
 export const onTasksUpdate = (
   callback: (tasks: any[]) => void,
-  projectId?: string
+  projectIdOrIds?: string | string[]
 ) => {
-  let tasksQuery;
+  let unsubscribes: (() => void)[] = [];
+  let allTasks: any[] = [];
 
-  if (projectId) {
-    // Get tasks for a specific project
-    tasksQuery = query(
-      collection(db, "tasks"),
-      where("projectId", "==", projectId)
+  // Helper to call callback with merged tasks
+  const updateCallback = () => {
+    // Remove duplicates by task id
+    const uniqueTasks = Array.from(
+      new Map(allTasks.map((task) => [task.id, task])).values()
     );
+    callback(uniqueTasks);
+  };
+
+  if (Array.isArray(projectIdOrIds)) {
+    const projectIds = projectIdOrIds;
+    // Firestore 'in' query supports up to 10 items
+    for (let i = 0; i < projectIds.length; i += 10) {
+      const batch = projectIds.slice(i, i + 10);
+      const tasksQuery = query(
+        collection(db, "tasks"),
+        where("projectId", "in", batch)
+      );
+      const unsubscribe = onSnapshot(
+        tasksQuery,
+        (snapshot) => {
+          // Remove old tasks for this batch
+          allTasks = allTasks.filter((task) => !batch.includes(task.projectId));
+          // Add new tasks for this batch
+          allTasks = allTasks.concat(
+            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+          );
+          updateCallback();
+        },
+        (error) => {
+          console.error("Error in tasks listener (batch):", error);
+        }
+      );
+      unsubscribes.push(unsubscribe);
+    }
+  } else if (typeof projectIdOrIds === "string") {
+    // Single projectId
+    const tasksQuery = query(
+      collection(db, "tasks"),
+      where("projectId", "==", projectIdOrIds)
+    );
+    const unsubscribe = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        allTasks = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        updateCallback();
+      },
+      (error) => {
+        console.error("Error in tasks listener (single project):", error);
+      }
+    );
+    unsubscribes.push(unsubscribe);
   } else {
-    // Get all tasks
-    tasksQuery = collection(db, "tasks");
+    // All tasks
+    const tasksQuery = collection(db, "tasks");
+    const unsubscribe = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        allTasks = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        updateCallback();
+      },
+      (error) => {
+        console.error("Error in tasks listener (all):", error);
+      }
+    );
+    unsubscribes.push(unsubscribe);
   }
 
-  // Set up the listener
-  const unsubscribe = onSnapshot(
-    tasksQuery,
-    (snapshot) => {
-      const tasks = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      callback(tasks);
-    },
-    (error) => {
-      console.error("Error in tasks listener:", error);
-    }
-  );
-
-  // Return the unsubscribe function
-  return unsubscribe;
+  // Return a function to unsubscribe all listeners
+  return () => {
+    unsubscribes.forEach((unsub) => unsub());
+  };
 };
 
 // Get tasks assigned to a specific employee
@@ -1210,8 +1284,12 @@ export const getEmployeePerformance = async (employeeId: string) => {
 };
 
 // Get performance metrics for all employees under an employer
-export const getEmployeesPerformance = async (employerId: string) => {
+export const getEmployeesPerformance = async (userId: string) => {
   try {
+    // Get the relevant employer ID
+    const employerId = await getRelevantEmployerId(userId);
+    if (!employerId) return [];
+
     // First, get all employees for this employer
     const employees = await getEmployees(employerId);
 
@@ -1709,14 +1787,15 @@ export const createDueDateRenegotiationRequest = async (
 };
 
 // Get all renegotiation requests for an employer
-export const getEmployerRenegotiationRequests = async (employerId: string) => {
+export const getEmployerRenegotiationRequests = async (userId: string) => {
   try {
-    // First get all projects created by this employer
-    const projectsData = await getProjects();
-    const employerProjects = projectsData.filter(
-      (project: any) => project.createdBy === employerId
-    );
-    const projectIds = employerProjects.map((project: any) => project.id);
+    // Get the relevant employer ID
+    const employerId = await getRelevantEmployerId(userId);
+    if (!employerId) return [];
+
+    // Get all projects created by this employer
+    const projectsData = await getProjects(employerId);
+    const projectIds = projectsData.map((project: any) => project.id);
 
     // Then get all renegotiation requests for these projects
     const requestsQuery = query(
@@ -1798,6 +1877,101 @@ export const updateRenegotiationRequest = async (
     return { success: true, status };
   } catch (error) {
     console.error("Error updating renegotiation request:", error);
+    throw error;
+  }
+};
+
+// Manager functions
+export const createManager = async (managerData: {
+  name: string;
+  email: string;
+  position: string;
+  employerId: string;
+  whatsappNumber?: string;
+}) => {
+  try {
+    // Generate a temporary password
+    const tempPassword = `Temp${Math.random().toString(36).substring(2, 10)}`;
+
+    // Create user account
+    const userCredential = await registerWithEmailAndPassword(
+      managerData.email,
+      tempPassword,
+      {
+        fullName: managerData.name,
+        userType: "manager",
+        employerId: managerData.employerId,
+      },
+      true // Prevent auto sign-in
+    );
+
+    // Create manager record
+    const managerRef = await addDoc(collection(db, "managers"), {
+      ...managerData,
+      userId: userCredential.user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return {
+      id: managerRef.id,
+      ...managerData,
+      tempPassword,
+      accountCreated: true,
+    };
+  } catch (error) {
+    console.error("Error creating manager:", error);
+    throw error;
+  }
+};
+
+// Modify getManagers to handle manager access
+export const getManagers = async (employerId: string) => {
+  try {
+    const managersQuery = query(
+      collection(db, "managers"),
+      where("employerId", "==", employerId)
+    );
+    const managersSnapshot = await getDocs(managersQuery);
+
+    return managersSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting managers:", error);
+    throw error;
+  }
+};
+
+export const updateManager = async (
+  managerId: string,
+  managerData: Partial<{
+    name: string;
+    email: string;
+    position: string;
+  }>
+) => {
+  try {
+    const managerRef = doc(db, "managers", managerId);
+    await updateDoc(managerRef, {
+      ...managerData,
+      updatedAt: serverTimestamp(),
+    });
+
+    return { id: managerId, ...managerData };
+  } catch (error) {
+    console.error("Error updating manager:", error);
+    throw error;
+  }
+};
+
+export const deleteManager = async (managerId: string) => {
+  try {
+    await deleteDoc(doc(db, "managers", managerId));
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting manager:", error);
     throw error;
   }
 };

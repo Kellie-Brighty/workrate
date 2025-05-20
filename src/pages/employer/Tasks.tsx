@@ -7,6 +7,8 @@ import {
   createTask,
   getProjects,
   getEmployees,
+  deleteTask,
+  type ProjectData,
 } from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -77,6 +79,29 @@ const getEffectiveStatus = (task: any) => {
   return task.status;
 };
 
+type DisplayTask = {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  dueDate: string;
+  project: { id: string; name: string };
+  assignedBy: { id: string; name: string; avatar: string };
+  checklist: any[];
+  attachments: any[];
+  timeEstimate: string;
+  timeSpent: string;
+  dueDateRenegotiationStatus?: "pending" | "approved" | "rejected";
+  tags?: string[];
+  assignedTo?: string;
+  assigneeName?: string;
+  assigneeInfo?: any;
+  projectName?: string;
+  projectInfo?: any;
+  createdAt?: any;
+};
+
 const Tasks: React.FC = () => {
   const isMobile = useIsMobile();
   const { userData } = useAuth();
@@ -93,7 +118,9 @@ const Tasks: React.FC = () => {
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [showEditTaskModal, setShowEditTaskModal] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<DisplayTask | null>(null);
 
   // Search/filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -105,42 +132,31 @@ const Tasks: React.FC = () => {
 
   // Set up Firebase real-time listener
   useEffect(() => {
-    // Start loading
     setLoading(true);
-
     // Only set up the listener if projects and employees data are loaded
     if (projects.length > 0 && employees.length > 0) {
-      // Set up the listener for real-time updates
+      // Listen for tasks for the employer's own projects only
+      const projectIds = projects.map((p) => p.id);
       const unsubscribe = onTasksUpdate((updatedTasks) => {
-        // Process tasks to ensure they have complete project and assignee information
         const processedTasks = updatedTasks.map((task) => {
-          // Find project information
           const project = projects.find((p) => p.id === task.projectId) || null;
-
-          // Find assignee information
           const assignee =
             employees.find((e) => e.id === task.assignedTo) || null;
-
           return {
             ...task,
-            // Ensure project information is complete
             projectName: project?.name || task.projectName || "Unknown Project",
             projectInfo: project || {
               id: task.projectId,
               name: project?.name || "Unknown Project",
             },
-            // Ensure assignee information is complete
             assigneeName: assignee?.name || task.assigneeName || "Unassigned",
             assigneeInfo:
               assignee || (task.assignedTo ? { id: task.assignedTo } : null),
           };
         });
-
         setTasks(processedTasks);
         setLoading(false);
-      });
-
-      // Clean up the listener when the component unmounts or dependencies change
+      }, projectIds);
       return () => {
         unsubscribe();
       };
@@ -152,8 +168,14 @@ const Tasks: React.FC = () => {
     const fetchProjects = async () => {
       try {
         setLoadingProjects(true);
-        const projectsList = await getProjects();
-        setProjects(projectsList);
+        const projectsList = (await getProjects()) as (ProjectData & {
+          id: string;
+        })[];
+        // Only include projects created by this employer
+        const employerProjects = userData?.id
+          ? projectsList.filter((p) => p.createdBy === userData.id)
+          : [];
+        setProjects(employerProjects);
       } catch (error) {
         console.error("Error fetching projects:", error);
       } finally {
@@ -162,7 +184,7 @@ const Tasks: React.FC = () => {
     };
 
     fetchProjects();
-  }, []);
+  }, [userData]);
 
   // Fetch employees for the dropdown
   useEffect(() => {
@@ -264,6 +286,19 @@ const Tasks: React.FC = () => {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+  };
+
+  const handleDeleteTask = async () => {
+    if (!taskToDelete) return;
+
+    try {
+      await deleteTask(taskToDelete);
+      setShowDeleteConfirmModal(false);
+      setTaskToDelete(null);
+      setShowTaskDetailModal(false);
+    } catch (error) {
+      console.error("Error deleting task:", error);
+    }
   };
 
   return (
@@ -762,6 +797,17 @@ const Tasks: React.FC = () => {
         actions={
           <>
             <button
+              className="px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              onClick={() => {
+                if (selectedTask) {
+                  setTaskToDelete(selectedTask.id);
+                  setShowDeleteConfirmModal(true);
+                }
+              }}
+            >
+              Delete Task
+            </button>
+            <button
               className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowTaskDetailModal(false)}
             >
@@ -1131,7 +1177,7 @@ const Tasks: React.FC = () => {
               <input
                 type="text"
                 id="edit-task-tags"
-                defaultValue={selectedTask.tags.join(", ")}
+                defaultValue={selectedTask.tags?.join(", ") || ""}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
                 placeholder="Comma-separated tags"
               />
@@ -1329,6 +1375,37 @@ const Tasks: React.FC = () => {
               )}
             </select>
           </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirmModal}
+        onClose={() => setShowDeleteConfirmModal(false)}
+        title="Delete Task"
+        size="small"
+        actions={
+          <>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowDeleteConfirmModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="ml-3 px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              onClick={handleDeleteTask}
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <div className="py-4">
+          <p className="text-sm text-gray-500">
+            Are you sure you want to delete this task? This action cannot be
+            undone.
+          </p>
         </div>
       </Modal>
     </div>

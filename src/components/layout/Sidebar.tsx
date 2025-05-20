@@ -8,7 +8,7 @@ import {
 } from "../../contexts/NotificationContext";
 
 interface SidebarProps {
-  userType: "employer" | "employee";
+  userType: "employer" | "employee" | "manager";
   isOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -75,6 +75,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       setShowLogoutModal(false);
     }
   };
+
+  // Get employer navigation items, excluding employee management for managers
 
   const employerMenuItems = [
     {

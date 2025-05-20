@@ -23,7 +23,7 @@ const Login: React.FC = () => {
   useEffect(() => {
     if (currentUser && userData) {
       // Navigate based on user type
-      if (userData.userType === "employer") {
+      if (userData.userType === "employer" || userData.userType === "manager") {
         navigate("/employer/dashboard");
       } else {
         navigate("/employee/dashboard");
