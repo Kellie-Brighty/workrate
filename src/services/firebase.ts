@@ -214,13 +214,17 @@ export const updateProject = async (
   }
 };
 
-export const getProject = async (projectId: string) => {
+export const getProject = async (
+  projectId: string
+): Promise<ProjectData & { id: string }> => {
   try {
     const projectRef = doc(db, "projects", projectId);
     const projectSnap = await getDoc(projectRef);
 
     if (projectSnap.exists()) {
-      return { id: projectSnap.id, ...projectSnap.data() };
+      return { id: projectSnap.id, ...projectSnap.data() } as ProjectData & {
+        id: string;
+      };
     } else {
       throw new Error("Project not found");
     }
@@ -281,10 +285,81 @@ export const createTask = async (taskData: TaskData) => {
       updatedAt: serverTimestamp(),
     });
 
+    // After creating the task, recalculate the project's progress and status
+    if (taskData.projectId) {
+      // Recalculate project progress to reflect the new task
+      await recalculateProjectProgress(taskData.projectId);
+    }
+
     return { id: taskRef.id, ...taskData };
   } catch (error) {
     console.error("Error creating task:", error);
     throw error;
+  }
+};
+
+// Function to recalculate project progress and status
+export const recalculateProjectProgress = async (projectId: string) => {
+  try {
+    // Get all tasks for this project
+    const tasksQuery = query(
+      collection(db, "tasks"),
+      where("projectId", "==", projectId)
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+    const tasks = tasksSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Count total and completed tasks
+    const totalTasks = tasks.length;
+    if (totalTasks === 0) return; // No tasks, nothing to update
+
+    const completedTasks = tasks.filter(
+      (task: any) => task.status === "Completed"
+    ).length;
+    const inProgressTasks = tasks.filter(
+      (task: any) => task.status === "In Progress" || task.status === "Started"
+    ).length;
+    const notStartedTasks = totalTasks - completedTasks - inProgressTasks;
+
+    // Calculate progress percentage
+    const progressPercentage = Math.round((completedTasks / totalTasks) * 100);
+
+    // Determine status based on task completion
+    let status;
+    if (completedTasks === totalTasks) {
+      status = "Completed";
+    } else if (completedTasks > 0 || inProgressTasks > 0) {
+      status = "In progress";
+    } else {
+      status = "Not started";
+    }
+
+    // Log the recalculation for debugging
+    console.log(`Project ${projectId} recalculation:`, {
+      totalTasks,
+      completedTasks,
+      inProgressTasks,
+      notStartedTasks,
+      progressPercentage,
+      newStatus: status,
+    });
+
+    // Update the project with new progress and status
+    const projectRef = doc(db, "projects", projectId);
+    await updateDoc(projectRef, {
+      progress: progressPercentage,
+      status: status,
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log(
+      `Updated project ${projectId}: progress=${progressPercentage}%, status=${status}`
+    );
+  } catch (error) {
+    console.error("Error recalculating project progress:", error);
   }
 };
 
@@ -301,11 +376,45 @@ export const updateTask = async (
       ? originalTask.data().assignedTo
       : null;
 
+    // Get the project ID before updating the task
+    const projectId = originalTask.exists()
+      ? originalTask.data().projectId
+      : null;
+
     // Update the task
     await updateDoc(taskRef, {
       ...taskData,
       updatedAt: serverTimestamp(),
     });
+
+    // If we have a project ID, update project progress and status
+    if (projectId) {
+      try {
+        // First check if project status is "Not started" and update to "In progress" immediately
+        // This keeps the quick response behavior for the first update
+        const projectRef = doc(db, "projects", projectId);
+        const projectSnap = await getDoc(projectRef);
+
+        if (projectSnap.exists()) {
+          const projectData = projectSnap.data();
+
+          // If project status is "Not started", change it to "In progress"
+          if (projectData.status === "Not started") {
+            await updateDoc(projectRef, {
+              status: "In progress",
+              updatedAt: serverTimestamp(),
+            });
+            console.log(`Updated project ${projectId} status to "In progress"`);
+          }
+        }
+
+        // Then do a full recalculation of project progress and status
+        await recalculateProjectProgress(projectId);
+      } catch (projectError) {
+        console.error("Error updating project status:", projectError);
+        // Don't throw here to allow the task update to complete
+      }
+    }
 
     // Trigger performance recalculation for the current assignee
     if (taskData.assignedTo) {
@@ -345,13 +454,17 @@ export const updateTask = async (
   }
 };
 
-export const getTask = async (taskId: string) => {
+export const getTask = async (
+  taskId: string
+): Promise<TaskData & { id: string }> => {
   try {
     const taskRef = doc(db, "tasks", taskId);
     const taskSnap = await getDoc(taskRef);
 
     if (taskSnap.exists()) {
-      return { id: taskSnap.id, ...taskSnap.data() };
+      return { id: taskSnap.id, ...taskSnap.data() } as TaskData & {
+        id: string;
+      };
     } else {
       throw new Error("Task not found");
     }
@@ -390,7 +503,21 @@ export const getTasks = async (projectId?: string) => {
 
 export const deleteTask = async (taskId: string) => {
   try {
-    await deleteDoc(doc(db, "tasks", taskId));
+    // Get the task data to retrieve the projectId before deletion
+    const taskRef = doc(db, "tasks", taskId);
+    const taskSnapshot = await getDoc(taskRef);
+    const projectId = taskSnapshot.exists()
+      ? taskSnapshot.data().projectId
+      : null;
+
+    // Delete the task
+    await deleteDoc(taskRef);
+
+    // If we have a projectId, recalculate the project progress
+    if (projectId) {
+      await recalculateProjectProgress(projectId);
+    }
+
     return { success: true };
   } catch (error) {
     console.error("Error deleting task:", error);
@@ -659,13 +786,18 @@ export const bulkCreateEmployees = async (
   }
 };
 
-export const getEmployee = async (employeeId: string) => {
+export const getEmployee = async (
+  employeeId: string
+): Promise<{ id: string; name: string } | null> => {
   try {
     const employeeRef = doc(db, "employees", employeeId);
     const employeeSnap = await getDoc(employeeRef);
 
     if (employeeSnap.exists()) {
-      return { id: employeeSnap.id, ...employeeSnap.data() };
+      return { id: employeeSnap.id, ...employeeSnap.data() } as {
+        id: string;
+        name: string;
+      };
     } else {
       return null;
     }
@@ -949,6 +1081,8 @@ export const calculateEmployeePerformance = async (employeeId: string) => {
           averageCompletionTime: 0,
           checklistItemCompletionRate: 0,
           progressScore: 0,
+          completedTasksCount: 0,
+          totalTasksCount: 0,
         },
         lastUpdated: serverTimestamp(),
       };
@@ -1016,6 +1150,8 @@ export const calculateEmployeePerformance = async (employeeId: string) => {
         averageCompletionTime,
         checklistItemCompletionRate,
         progressScore,
+        completedTasksCount: completedTasks.length,
+        totalTasksCount: employeeTasks.length,
       },
       lastUpdated: serverTimestamp(),
     };
@@ -1458,6 +1594,9 @@ export const generateTasksForProject = async (
       tasksCount: createdTasks.length,
     });
 
+    // Recalculate project progress after all tasks are created
+    await recalculateProjectProgress(project.id);
+
     console.log(
       `Created ${createdTasks.length} tasks for project "${project.name}"`
     );
@@ -1465,6 +1604,201 @@ export const generateTasksForProject = async (
   } catch (error) {
     console.error("Error generating tasks for project:", error);
     return [];
+  }
+};
+
+// Function to recalculate progress for all projects
+export const recalculateAllProjectsProgress = async (employerId?: string) => {
+  try {
+    // Get all projects, optionally filtering by employer
+    let projectsQuery;
+    if (employerId) {
+      projectsQuery = query(
+        collection(db, "projects"),
+        where("createdBy", "==", employerId)
+      );
+    } else {
+      projectsQuery = collection(db, "projects");
+    }
+
+    const projectsSnapshot = await getDocs(projectsQuery);
+    const projects = projectsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    console.log(`Recalculating progress for ${projects.length} projects`);
+
+    // Process each project
+    for (const project of projects) {
+      await recalculateProjectProgress(project.id);
+    }
+
+    return { success: true, count: projects.length };
+  } catch (error) {
+    console.error("Error recalculating all projects progress:", error);
+    throw error;
+  }
+};
+
+// Define the interface for due date renegotiation requests
+export interface DueDateRenegotiationRequest {
+  taskId: string;
+  employeeId: string;
+  employeeName?: string;
+  taskTitle?: string;
+  projectId?: string;
+  projectName?: string;
+  currentDueDate: string;
+  requestedDueDate: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt?: any; // Timestamp
+  updatedAt?: any; // Timestamp
+  responseNote?: string; // Employer's note when approving/rejecting
+}
+
+// Create a new due date renegotiation request
+export const createDueDateRenegotiationRequest = async (
+  requestData: DueDateRenegotiationRequest
+) => {
+  try {
+    // Add task and project information to the request
+    let enhancedRequest = { ...requestData };
+
+    // Get task details if not provided
+    if (!enhancedRequest.taskTitle || !enhancedRequest.projectId) {
+      const taskData = await getTask(requestData.taskId);
+      enhancedRequest.taskTitle = taskData.title;
+      enhancedRequest.projectId = taskData.projectId;
+
+      // Get project name if project ID is available
+      if (taskData.projectId && !enhancedRequest.projectName) {
+        const projectData = await getProject(taskData.projectId);
+        enhancedRequest.projectName = projectData.name;
+      }
+    }
+
+    // Get employee name if not provided
+    if (!enhancedRequest.employeeName) {
+      const employeeData = await getEmployee(requestData.employeeId);
+      if (employeeData) {
+        enhancedRequest.employeeName = employeeData.name;
+      }
+    }
+
+    // Save the request to Firestore
+    const requestRef = await addDoc(collection(db, "dueDateRenegotiations"), {
+      ...enhancedRequest,
+      status: enhancedRequest.status || "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Update the task to mark it as having a pending renegotiation
+    await updateDoc(doc(db, "tasks", requestData.taskId), {
+      dueDateRenegotiationStatus: "pending",
+      updatedAt: serverTimestamp(),
+    });
+
+    return { id: requestRef.id, ...enhancedRequest };
+  } catch (error) {
+    console.error("Error creating due date renegotiation request:", error);
+    throw error;
+  }
+};
+
+// Get all renegotiation requests for an employer
+export const getEmployerRenegotiationRequests = async (employerId: string) => {
+  try {
+    // First get all projects created by this employer
+    const projectsData = await getProjects();
+    const employerProjects = projectsData.filter(
+      (project: any) => project.createdBy === employerId
+    );
+    const projectIds = employerProjects.map((project: any) => project.id);
+
+    // Then get all renegotiation requests for these projects
+    const requestsQuery = query(
+      collection(db, "dueDateRenegotiations"),
+      where("projectId", "in", projectIds),
+      orderBy("createdAt", "desc")
+    );
+
+    const requestsSnapshot = await getDocs(requestsQuery);
+    return requestsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting employer renegotiation requests:", error);
+    throw error;
+  }
+};
+
+// Get renegotiation requests for a specific employee
+export const getEmployeeRenegotiationRequests = async (employeeId: string) => {
+  try {
+    const requestsQuery = query(
+      collection(db, "dueDateRenegotiations"),
+      where("employeeId", "==", employeeId),
+      orderBy("createdAt", "desc")
+    );
+
+    const requestsSnapshot = await getDocs(requestsQuery);
+    return requestsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting employee renegotiation requests:", error);
+    throw error;
+  }
+};
+
+// Update a renegotiation request (approve or reject)
+export const updateRenegotiationRequest = async (
+  requestId: string,
+  status: "approved" | "rejected",
+  responseNote?: string
+) => {
+  try {
+    // Get the request data first
+    const requestRef = doc(db, "dueDateRenegotiations", requestId);
+    const requestSnapshot = await getDoc(requestRef);
+
+    if (!requestSnapshot.exists()) {
+      throw new Error("Renegotiation request not found");
+    }
+
+    const requestData = requestSnapshot.data() as DueDateRenegotiationRequest;
+
+    // Update the request status
+    await updateDoc(requestRef, {
+      status,
+      responseNote: responseNote || "",
+      updatedAt: serverTimestamp(),
+    });
+
+    // If approved, update the task due date
+    if (status === "approved") {
+      await updateDoc(doc(db, "tasks", requestData.taskId), {
+        dueDate: requestData.requestedDueDate,
+        dueDateRenegotiationStatus: "approved",
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      // If rejected, just update the renegotiation status
+      await updateDoc(doc(db, "tasks", requestData.taskId), {
+        dueDateRenegotiationStatus: "rejected",
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { success: true, status };
+  } catch (error) {
+    console.error("Error updating renegotiation request:", error);
+    throw error;
   }
 };
 

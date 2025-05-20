@@ -7,7 +7,17 @@ import {
   useErrorNotification,
   useSuccessNotification,
 } from "../../contexts/NotificationContext";
-import { getEmployees, getProjects, getTasks } from "../../services/firebase";
+import {
+  getEmployees,
+  getProjects,
+  getTasks,
+  getEmployeesPerformance,
+  onEmployeePerformanceUpdate,
+  recalculateAllProjectsProgress,
+  getEmployee,
+  getEmployeeProjects,
+  getEmployeeTasks,
+} from "../../services/firebase";
 
 // Dashboard interface
 interface DashboardData {
@@ -24,6 +34,7 @@ interface DashboardData {
     avatar: string;
     completionRate: number;
     projects: number;
+    completedTasks?: number;
   } | null;
   recentProjects: {
     id: string;
@@ -65,9 +76,32 @@ const notifications = [
   },
 ];
 
+// Define a type for employee performance metrics for clarity
+interface EmployeePerformanceData {
+  employeeId?: string;
+  id?: string;
+  employeeName?: string;
+  employeeEmail?: string;
+  employeeAvatar?: string;
+  employeePosition?: string;
+  employeeDepartment?: string;
+  metrics: {
+    taskCompletionRate: number;
+    onTimeCompletionRate: number;
+    averageCompletionTime: number;
+    checklistItemCompletionRate: number;
+    progressScore: number;
+    completedTasksCount: number;
+    totalTasksCount: number;
+  };
+}
+
 const EmployerDashboard: React.FC = () => {
   // Auth context
-  const { userData, logout } = useAuth();
+  const { userData, logout } = useAuth() as {
+    userData: { id: string; email: string } | null;
+    logout: () => Promise<void>;
+  };
   const navigate = useNavigate();
   const showError = useErrorNotification();
   const showSuccess = useSuccessNotification();
@@ -85,6 +119,11 @@ const EmployerDashboard: React.FC = () => {
     topPerformer: null,
     recentProjects: [],
   });
+
+  // State for tracking the top performer's employee ID
+  const [topPerformerEmpId, _setTopPerformerEmpId] = useState<string | null>(
+    null
+  );
 
   // State for dropdowns
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -107,29 +146,32 @@ const EmployerDashboard: React.FC = () => {
   // Fetch dashboard data
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!userData?.id) return;
+      if (!userData) return;
 
-      setLoading(true);
       try {
+        setLoading(true);
+
+        // Explicitly type userData to fix type issues
+        const typedUserData = userData as { id: string; email: string };
+
+        // Get projects for this employer
+        const userProjects = await getProjects();
+        const filteredProjects = userProjects.filter(
+          (p: any) => p.createdBy === typedUserData.id
+        );
+
         // Fetch employees count
-        const employeesData = await getEmployees(userData.id);
+        const employeesData = await getEmployees(typedUserData.id);
         // Type assertion for employee data
         const activeEmployees = employeesData.filter(
           (emp: any) => emp.status === "active"
         ).length;
 
-        // Fetch projects
-        const projectsData = await getProjects();
-        // Type assertion for project data
-        const userProjects = projectsData.filter(
-          (project: any) => project.createdBy === userData.id
-        );
-
         // Fetch tasks
         const tasksData = await getTasks();
         // Type assertion for task data
         const userTasks = tasksData.filter((task: any) =>
-          userProjects.some((p: any) => p.id === task.projectId)
+          filteredProjects.some((p: any) => p.id === task.projectId)
         );
 
         // Calculate stats
@@ -139,7 +181,7 @@ const EmployerDashboard: React.FC = () => {
         const pendingTasks = userTasks.length - completedTasks;
 
         const now = new Date();
-        const overdueProjects = userProjects.filter((project: any) => {
+        const overdueProjects = filteredProjects.filter((project: any) => {
           const endDate = new Date(project.endDate);
           return endDate < now && project.status !== "Completed";
         }).length;
@@ -147,29 +189,80 @@ const EmployerDashboard: React.FC = () => {
         // Get upcoming deadlines (projects due in next 7 days)
         const sevenDaysFromNow = new Date();
         sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-        const upcomingDeadlines = userProjects.filter((project: any) => {
+        const upcomingDeadlines = filteredProjects.filter((project: any) => {
           const endDate = new Date(project.endDate);
           return endDate > now && endDate <= sevenDaysFromNow;
         }).length;
 
         // Mock recent projects for now
-        const recentProjects = userProjects.slice(0, 3).map((project: any) => ({
-          id: project.id,
-          name: project.name,
-          progress: project.progress || 0,
-          team: (project.team && project.team.length) || 0,
-        }));
+        const recentProjects = filteredProjects
+          .slice(0, 3)
+          .map((project: any) => ({
+            id: project.id,
+            name: project.name,
+            progress: project.progress || 0,
+            team: (project.team && project.team.length) || 0,
+          }));
 
-        // Update state with real data
+        // Get employee performance data
+        const employeesPerformance = (await getEmployeesPerformance(
+          typedUserData.id
+        )) as any[];
+
+        // Find the top performer with highest progress score
+        let topPerformerData = null;
+        if (employeesPerformance.length > 0) {
+          // Filter to only include employees with valid metrics data and cast to known type
+          const performersWithMetrics = employeesPerformance
+            .filter(
+              (emp) =>
+                emp &&
+                typeof emp.metrics === "object" &&
+                emp.metrics?.progressScore > 0
+            )
+            .map((emp) => emp as unknown as EmployeePerformanceData);
+
+          if (performersWithMetrics.length > 0) {
+            // Now TypeScript knows the shape of these objects
+            const sortedPerformers = [...performersWithMetrics].sort(
+              (a, b) => b.metrics.progressScore - a.metrics.progressScore
+            );
+
+            const topPerformer = sortedPerformers[0];
+
+            // Get employee-specific project data
+            const employeeId = topPerformer.employeeId || topPerformer.id || "";
+            const employeeData = (await getEmployee(employeeId)) as any;
+            const employeeProjects = await getEmployeeProjects(employeeId);
+
+            // Get employee tasks data
+            const userTasks = await getEmployeeTasks(employeeId);
+
+            topPerformerData = {
+              name: employeeData?.name || topPerformer.employeeName,
+              title: employeeData?.position || topPerformer.employeePosition,
+              avatar: employeeData?.avatar || topPerformer.employeeAvatar,
+              completionRate: topPerformer.metrics.taskCompletionRate,
+              projects: employeeProjects.length,
+              completedTasks:
+                topPerformer.metrics.completedTasksCount ||
+                userTasks.filter((task: any) => task.status === "Completed")
+                  .length,
+            };
+          }
+        }
+
+        // Update dashboard data
         setDashboardData({
-          projects: userProjects.length,
-          tasks: userTasks.length,
+          ...dashboardData,
           employees: activeEmployees,
+          projects: filteredProjects.length,
+          tasks: userTasks.length,
           completedTasks,
           pendingTasks,
           overdueProjects,
           upcomingDeadlines,
-          topPerformer: null, // Will be implemented in the future
+          topPerformer: topPerformerData,
           recentProjects: recentProjects || [],
         });
       } catch (error) {
@@ -190,6 +283,44 @@ const EmployerDashboard: React.FC = () => {
 
     fetchDashboardData();
   }, [userData]);
+
+  // Real-time listener for top performer updates
+  useEffect(() => {
+    if (!topPerformerEmpId) return;
+
+    console.log(
+      "Setting up real-time listener for top performer:",
+      topPerformerEmpId
+    );
+
+    // Set up the real-time listener for the top performer's metrics
+    const unsubscribe = onEmployeePerformanceUpdate((performanceData) => {
+      if (performanceData && performanceData.metrics) {
+        console.log("Received real-time performance update:", performanceData);
+
+        // Update only the top performer's completion rate in the dashboard data
+        setDashboardData((prevData) => {
+          if (!prevData.topPerformer) return prevData;
+
+          return {
+            ...prevData,
+            topPerformer: {
+              ...prevData.topPerformer,
+              completionRate: Math.round(
+                performanceData.metrics.taskCompletionRate
+              ),
+            },
+          };
+        });
+      }
+    }, topPerformerEmpId);
+
+    // Cleanup listener on component unmount
+    return () => {
+      console.log("Cleaning up top performer listener");
+      unsubscribe();
+    };
+  }, [topPerformerEmpId]);
 
   // Count unread notifications
   const unreadCount = notificationsList.filter((notif) => !notif.read).length;
@@ -235,6 +366,24 @@ const EmployerDashboard: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Add effect to update all projects' progress
+  useEffect(() => {
+    const updateAllProjectsProgress = async () => {
+      if (!userData?.id) return;
+
+      try {
+        // Use the new function to recalculate all projects progress
+        const result = await recalculateAllProjectsProgress(userData.id);
+        console.log(`Updated progress for ${result.count} projects`);
+      } catch (error) {
+        console.error("Error updating project progress:", error);
+      }
+    };
+
+    // Run the update when the dashboard loads
+    updateAllProjectsProgress();
+  }, [userData?.id]);
 
   return (
     <div className="w-full bg-gray-50 min-h-screen">
@@ -525,23 +674,23 @@ const EmployerDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="p-6">
-              <div className="flex items-center">
+                <div className="flex items-center">
                   <div className="p-3 rounded-full bg-indigo-50 text-indigo-600">
-                  <svg
+                    <svg
                       className="h-8 w-8"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
                         d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                    />
-                  </svg>
-                </div>
+                      />
+                    </svg>
+                  </div>
                   <div className="ml-5">
                     <h2 className="text-lg font-medium text-gray-900">
                       Total Employees
@@ -550,10 +699,10 @@ const EmployerDashboard: React.FC = () => {
                       <p className="text-2xl font-semibold text-indigo-600">
                         {dashboardData.employees}
                       </p>
-                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
 
@@ -569,23 +718,23 @@ const EmployerDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="p-6">
-              <div className="flex items-center">
+                <div className="flex items-center">
                   <div className="p-3 rounded-full bg-blue-50 text-blue-600">
-                  <svg
+                    <svg
                       className="h-8 w-8"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                    />
-                  </svg>
-                </div>
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                      />
+                    </svg>
+                  </div>
                   <div className="ml-5">
                     <h2 className="text-lg font-medium text-gray-900">
                       Active Projects
@@ -594,10 +743,10 @@ const EmployerDashboard: React.FC = () => {
                       <p className="text-2xl font-semibold text-blue-600">
                         {dashboardData.projects}
                       </p>
-                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
 
@@ -613,23 +762,23 @@ const EmployerDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="p-6">
-              <div className="flex items-center">
+                <div className="flex items-center">
                   <div className="p-3 rounded-full bg-green-50 text-green-600">
-                  <svg
+                    <svg
                       className="h-8 w-8"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
                         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                    />
-                  </svg>
-                </div>
+                      />
+                    </svg>
+                  </div>
                   <div className="ml-5">
                     <h2 className="text-lg font-medium text-gray-900">
                       Completed Tasks
@@ -638,10 +787,10 @@ const EmployerDashboard: React.FC = () => {
                       <p className="text-2xl font-semibold text-green-600">
                         {dashboardData.completedTasks}
                       </p>
-                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
 
@@ -657,23 +806,23 @@ const EmployerDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="p-6">
-              <div className="flex items-center">
+                <div className="flex items-center">
                   <div className="p-3 rounded-full bg-amber-50 text-amber-600">
-                  <svg
+                    <svg
                       className="h-8 w-8"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
                   <div className="ml-5">
                     <h2 className="text-lg font-medium text-gray-900">
                       Pending Tasks
@@ -682,10 +831,10 @@ const EmployerDashboard: React.FC = () => {
                       <p className="text-2xl font-semibold text-amber-600">
                         {dashboardData.pendingTasks}
                       </p>
-                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
         </div>
@@ -701,16 +850,16 @@ const EmployerDashboard: React.FC = () => {
               <h3 className="text-lg font-medium text-gray-900">
                 Top Performer
               </h3>
-                <button
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowTopPerformerModal(true);
                 }}
                 className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-                >
-                  View details
-                </button>
-        </div>
+              >
+                View details
+              </button>
+            </div>
 
             {loading ? (
               <div className="flex flex-col items-center justify-center">
@@ -719,38 +868,38 @@ const EmployerDashboard: React.FC = () => {
                 <div className="animate-pulse w-1/2 h-3 bg-gray-200 rounded mb-6"></div>
                 <div className="animate-pulse w-full h-4 bg-gray-200 rounded mb-4"></div>
                 <div className="animate-pulse w-full h-16 bg-gray-200 rounded mb-4"></div>
-            </div>
+              </div>
             ) : dashboardData.topPerformer ? (
               <div className="flex flex-col items-center">
-              <img
-                className="h-24 w-24 rounded-full mb-4"
-                src={dashboardData.topPerformer.avatar}
-                alt={dashboardData.topPerformer.name}
-              />
-              <h4 className="text-xl font-semibold text-gray-900">
-                {dashboardData.topPerformer.name}
-              </h4>
-              <p className="text-sm text-gray-500">
-                {dashboardData.topPerformer.title}
-              </p>
+                <img
+                  className="h-24 w-24 rounded-full mb-4"
+                  src={dashboardData.topPerformer.avatar}
+                  alt={dashboardData.topPerformer.name}
+                />
+                <h4 className="text-xl font-semibold text-gray-900">
+                  {dashboardData.topPerformer.name}
+                </h4>
+                <p className="text-sm text-gray-500">
+                  {dashboardData.topPerformer.title}
+                </p>
 
                 <div className="w-full mt-8">
-                <div className="flex justify-between mb-1">
+                  <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium text-gray-500">
-                    Completion Rate
-                  </span>
-                  <span className="text-sm font-medium text-gray-700">
-                    {dashboardData.topPerformer.completionRate}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-green-600 h-2.5 rounded-full"
-                    style={{
-                      width: `${dashboardData.topPerformer.completionRate}%`,
-                    }}
-                  ></div>
-              </div>
+                      Completion Rate
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {dashboardData.topPerformer.completionRate}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-green-600 h-2.5 rounded-full"
+                      style={{
+                        width: `${dashboardData.topPerformer.completionRate}%`,
+                      }}
+                    ></div>
+                  </div>
 
                   <div className="mt-6 grid grid-cols-1 gap-1">
                     <div className="flex justify-between p-2 bg-gray-50 rounded">
@@ -758,10 +907,10 @@ const EmployerDashboard: React.FC = () => {
                         Active Projects
                       </div>
                       <div className="text-sm font-medium text-gray-900">
-                    {dashboardData.topPerformer.projects}
+                        {dashboardData.topPerformer.projects}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                </div>
                 </div>
               </div>
             ) : (
@@ -786,7 +935,7 @@ const EmployerDashboard: React.FC = () => {
                 <p className="text-sm text-gray-400 mt-2">
                   Data will appear once employees complete tasks
                 </p>
-            </div>
+              </div>
             )}
           </div>
 
@@ -794,8 +943,8 @@ const EmployerDashboard: React.FC = () => {
           <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-medium text-gray-900">
-                  Recent Projects
-                </h3>
+                Recent Projects
+              </h3>
               <div className="flex space-x-2">
                 <button
                   onClick={() => setShowAllProjectsModal(true)}
@@ -828,8 +977,8 @@ const EmployerDashboard: React.FC = () => {
             ) : dashboardData.recentProjects &&
               dashboardData.recentProjects.length > 0 ? (
               <div className="overflow-hidden">
-              <ul className="divide-y divide-gray-200">
-                {dashboardData.recentProjects.map((project) => (
+                <ul className="divide-y divide-gray-200">
+                  {dashboardData.recentProjects.map((project) => (
                     <li key={project.id} className="py-4">
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
@@ -839,24 +988,24 @@ const EmployerDashboard: React.FC = () => {
                           <div className="mt-2 flex items-center text-sm text-gray-500">
                             <svg
                               className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400"
-                            xmlns="http://www.w3.org/2000/svg"
+                              xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 20 20"
                               fill="currentColor"
-                          >
-                            <path
+                            >
+                              <path
                                 fillRule="evenodd"
                                 d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
                                 clipRule="evenodd"
-                            />
-                          </svg>
+                              />
+                            </svg>
                             <span>{project.team} team members</span>
-                        </div>
                           </div>
+                        </div>
                         <div className="flex-shrink-0 ml-5">
                           <p className="text-sm font-medium text-gray-900">
                             {project.progress}%
                           </p>
-                          </div>
+                        </div>
                       </div>
                       <div className="mt-2">
                         <div className="flex items-center">
@@ -864,16 +1013,16 @@ const EmployerDashboard: React.FC = () => {
                             <div className="w-full bg-gray-200 rounded-full h-2">
                               <div
                                 className={`${
-                                project.progress < 30
-                                  ? "bg-red-500"
-                                  : project.progress < 70
-                                  ? "bg-yellow-500"
-                                  : "bg-green-500"
+                                  project.progress < 30
+                                    ? "bg-red-500"
+                                    : project.progress < 70
+                                    ? "bg-yellow-500"
+                                    : "bg-green-500"
                                 } h-2 rounded-full`}
-                              style={{ width: `${project.progress}%` }}
-                            ></div>
+                                style={{ width: `${project.progress}%` }}
+                              ></div>
+                            </div>
                           </div>
-                        </div>
                         </div>
                       </div>
                     </li>
@@ -884,28 +1033,28 @@ const EmployerDashboard: React.FC = () => {
               <div className="flex flex-col items-center justify-center h-64">
                 <svg
                   className="h-16 w-16 text-gray-300 mb-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                            />
-                          </svg>
+                  />
+                </svg>
                 <p className="text-gray-500">No projects available yet</p>
                 <button
                   onClick={() => setShowCreateProjectModal(true)}
                   className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 transition-colors duration-200"
                 >
                   Create your first project
-                        </button>
-                      </div>
+                </button>
+              </div>
             )}
-                    </div>
+          </div>
         </div>
       </main>
 
@@ -977,25 +1126,11 @@ const EmployerDashboard: React.FC = () => {
                 <div className="bg-white p-4 border border-gray-200 rounded-lg">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-gray-900">
-                      {/* This data would come from a real calculation */}
-                      {Math.round(
-                        (dashboardData.topPerformer.completionRate / 100) * 40
-                      )}
+                      {dashboardData.topPerformer.completedTasks || 0}
                     </div>
                     <div className="text-xs text-gray-500">Tasks Completed</div>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex justify-center">
-                <Link
-                  to={`/employer/employees/${dashboardData.topPerformer.name
-                    .replace(/\s+/g, "-")
-                    .toLowerCase()}`}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  View Full Profile
-                </Link>
               </div>
             </div>
           </div>
@@ -1003,18 +1138,18 @@ const EmployerDashboard: React.FC = () => {
           <div className="py-8 flex flex-col items-center">
             <svg
               className="h-20 w-20 text-gray-300 mb-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
                 d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
-                  </svg>
+              />
+            </svg>
             <h4 className="text-xl font-semibold text-gray-900">
               No Top Performer Yet
             </h4>
@@ -1029,364 +1164,364 @@ const EmployerDashboard: React.FC = () => {
             >
               View All Employees
             </Link>
-              </div>
+          </div>
         )}
       </Modal>
 
       {/* Other modals remain the same */}
-        <Modal
-          isOpen={showEmployeesModal}
-          onClose={() => setShowEmployeesModal(false)}
-          title="All Employees"
-          size="large"
-          actions={
-            <button
+      <Modal
+        isOpen={showEmployeesModal}
+        onClose={() => setShowEmployeesModal(false)}
+        title="All Employees"
+        size="large"
+        actions={
+          <button
+            onClick={() => setShowEmployeesModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Employee Roster
+            </h3>
+            <p className="text-sm text-gray-500">
+              View and manage all employees in your organization.
+            </p>
+          </div>
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              Showing {dashboardData.employees} employees
+            </div>
+            <Link
+              to="/employer/employees"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowEmployeesModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Employee Roster
-              </h3>
-              <p className="text-sm text-gray-500">
-                View and manage all employees in your organization.
-              </p>
-            </div>
-            <div className="mt-4 flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                Showing {dashboardData.employees} employees
-              </div>
-              <Link
-                to="/employer/employees"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowEmployeesModal(false)}
-              >
-                Go to Employees Page
-              </Link>
-            </div>
+              Go to Employees Page
+            </Link>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
-        <Modal
-          isOpen={showProjectsModal}
-          onClose={() => setShowProjectsModal(false)}
-          title="All Projects"
-          size="large"
-          actions={
-            <button
+      <Modal
+        isOpen={showProjectsModal}
+        onClose={() => setShowProjectsModal(false)}
+        title="All Projects"
+        size="large"
+        actions={
+          <button
+            onClick={() => setShowProjectsModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Project Portfolio
+            </h3>
+            <p className="text-sm text-gray-500">
+              View and manage all your active and completed projects.
+            </p>
+          </div>
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              Showing {dashboardData.projects} active projects
+            </div>
+            <Link
+              to="/employer/projects"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowProjectsModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Project Portfolio
-              </h3>
-              <p className="text-sm text-gray-500">
-                View and manage all your active and completed projects.
-              </p>
-            </div>
-            <div className="mt-4 flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                Showing {dashboardData.projects} active projects
-              </div>
-              <Link
-                to="/employer/projects"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowProjectsModal(false)}
-              >
-                Go to Projects Page
-              </Link>
-            </div>
+              Go to Projects Page
+            </Link>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
-        <Modal
-          isOpen={showCompletedTasksModal}
-          onClose={() => setShowCompletedTasksModal(false)}
-          title="Completed Tasks"
-          size="large"
-          actions={
-            <button
+      <Modal
+        isOpen={showCompletedTasksModal}
+        onClose={() => setShowCompletedTasksModal(false)}
+        title="Completed Tasks"
+        size="large"
+        actions={
+          <button
+            onClick={() => setShowCompletedTasksModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Task Completion Summary
+            </h3>
+            <p className="text-sm text-gray-500">
+              Overview of all completed tasks across all projects.
+            </p>
+          </div>
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {dashboardData.completedTasks} tasks completed
+            </div>
+            <Link
+              to="/employer/tasks"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowCompletedTasksModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Task Completion Summary
-              </h3>
-              <p className="text-sm text-gray-500">
-                Overview of all completed tasks across all projects.
-              </p>
-            </div>
-            <div className="mt-4 flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                {dashboardData.completedTasks} tasks completed
-              </div>
-              <Link
-                to="/employer/tasks"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowCompletedTasksModal(false)}
-              >
-                Go to Tasks Page
-              </Link>
-            </div>
+              Go to Tasks Page
+            </Link>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
-        <Modal
-          isOpen={showPendingTasksModal}
-          onClose={() => setShowPendingTasksModal(false)}
-          title="Pending Tasks"
-          size="large"
-          actions={
-            <button
+      <Modal
+        isOpen={showPendingTasksModal}
+        onClose={() => setShowPendingTasksModal(false)}
+        title="Pending Tasks"
+        size="large"
+        actions={
+          <button
+            onClick={() => setShowPendingTasksModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Pending Tasks Overview
+            </h3>
+            <p className="text-sm text-gray-500">
+              Review tasks that require attention and follow-up.
+            </p>
+          </div>
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {dashboardData.pendingTasks} tasks pending
+            </div>
+            <Link
+              to="/employer/tasks"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setShowPendingTasksModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Pending Tasks Overview
-              </h3>
-              <p className="text-sm text-gray-500">
-                Review tasks that require attention and follow-up.
-              </p>
-            </div>
-            <div className="mt-4 flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                {dashboardData.pendingTasks} tasks pending
-              </div>
-              <Link
-                to="/employer/tasks"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowPendingTasksModal(false)}
-              >
-                Go to Tasks Page
-              </Link>
-            </div>
+              Go to Tasks Page
+            </Link>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
-        <Modal
-          isOpen={showAllProjectsModal}
-          onClose={() => setShowAllProjectsModal(false)}
-          title="All Projects"
-          size="large"
-          actions={
-            <button
-              onClick={() => setShowAllProjectsModal(false)}
-              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Close
-            </button>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Project Portfolio
-              </h3>
-              <p className="text-sm text-gray-500">
-                View and manage all your active and completed projects.
-              </p>
-            </div>
-            <div className="overflow-hidden shadow border-b border-gray-200 rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Project
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Team Size
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Progress
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {dashboardData.recentProjects.map((project) => (
-                    <tr key={project.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="bg-indigo-100 rounded-md p-2 mr-4">
-                            <svg
-                              className="h-5 w-5 text-indigo-600"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                              />
-                            </svg>
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.name}
-                            </div>
+      <Modal
+        isOpen={showAllProjectsModal}
+        onClose={() => setShowAllProjectsModal(false)}
+        title="All Projects"
+        size="large"
+        actions={
+          <button
+            onClick={() => setShowAllProjectsModal(false)}
+            className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Project Portfolio
+            </h3>
+            <p className="text-sm text-gray-500">
+              View and manage all your active and completed projects.
+            </p>
+          </div>
+          <div className="overflow-hidden shadow border-b border-gray-200 rounded-lg">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Project
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Team Size
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Progress
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {dashboardData.recentProjects.map((project) => (
+                  <tr key={project.id}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="bg-indigo-100 rounded-md p-2 mr-4">
+                          <svg
+                            className="h-5 w-5 text-indigo-600"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {project.name}
                           </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {project.team} members
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {project.team} members
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="mr-2 text-sm font-medium">
+                          {project.progress}%
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="mr-2 text-sm font-medium">
-                            {project.progress}%
-                          </div>
-                          <div className="w-24 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                project.progress < 30
-                                  ? "bg-red-500"
-                                  : project.progress < 70
-                                  ? "bg-yellow-500"
-                                  : "bg-green-500"
-                              }`}
-                              style={{ width: `${project.progress}%` }}
-                            ></div>
-                          </div>
+                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              project.progress < 30
+                                ? "bg-red-500"
+                                : project.progress < 70
+                                ? "bg-yellow-500"
+                                : "bg-green-500"
+                            }`}
+                            style={{ width: `${project.progress}%` }}
+                          ></div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            project.progress < 30
-                              ? "bg-red-100 text-red-800"
-                              : project.progress < 70
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {project.progress < 30
-                            ? "Early Stages"
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          project.progress < 30
+                            ? "bg-red-100 text-red-800"
                             : project.progress < 70
-                            ? "In Progress"
-                            : "Near Completion"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4 flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                Showing {dashboardData.recentProjects.length} of{" "}
-                {dashboardData.projects} projects
-              </div>
-              <Link
-                to="/employer/projects"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowAllProjectsModal(false)}
-              >
-                Go to Projects Page
-              </Link>
-            </div>
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {project.progress < 30
+                          ? "Early Stages"
+                          : project.progress < 70
+                          ? "In Progress"
+                          : "Near Completion"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </Modal>
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              Showing {dashboardData.recentProjects.length} of{" "}
+              {dashboardData.projects} projects
+            </div>
+            <Link
+              to="/employer/projects"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowAllProjectsModal(false)}
+            >
+              Go to Projects Page
+            </Link>
+          </div>
+        </div>
+      </Modal>
 
-        <Modal
-          isOpen={showCreateProjectModal}
-          onClose={() => setShowCreateProjectModal(false)}
-          title="Create New Project"
-          size="medium"
-          actions={
-            <>
-              <button
-                onClick={() => setShowCreateProjectModal(false)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      <Modal
+        isOpen={showCreateProjectModal}
+        onClose={() => setShowCreateProjectModal(false)}
+        title="Create New Project"
+        size="medium"
+        actions={
+          <>
+            <button
+              onClick={() => setShowCreateProjectModal(false)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            <Link
+              to="/employer/create-project"
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowCreateProjectModal(false)}
+            >
+              Continue
+            </Link>
+          </>
+        }
+      >
+        <div className="py-4">
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Create a New Project
+            </h3>
+            <p className="text-sm text-gray-500">
+              Start a new project and assign team members.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="project-name"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Cancel
-              </button>
-              <Link
-                to="/employer/create-project"
-                className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                onClick={() => setShowCreateProjectModal(false)}
+                Project Name
+              </label>
+              <input
+                type="text"
+                id="project-name"
+                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="Enter project name"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="project-description"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Continue
-              </Link>
-            </>
-          }
-        >
-          <div className="py-4">
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Create a New Project
-              </h3>
-              <p className="text-sm text-gray-500">
-                Start a new project and assign team members.
-              </p>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="project-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  id="project-name"
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter project name"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="project-description"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Description
-                </label>
-                <textarea
-                  id="project-description"
-                  rows={3}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter project description"
-                ></textarea>
-              </div>
-            </div>
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-500">
-                For more options and detailed configuration, continue to the
-                project creation page.
-              </p>
+                Description
+              </label>
+              <textarea
+                id="project-description"
+                rows={3}
+                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="Enter project description"
+              ></textarea>
             </div>
           </div>
-        </Modal>
+          <div className="mt-6 text-center">
+            <p className="text-sm text-gray-500">
+              For more options and detailed configuration, continue to the
+              project creation page.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

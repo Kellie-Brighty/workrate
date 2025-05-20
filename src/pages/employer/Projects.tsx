@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { getProjects, deleteProject } from "../../services/firebase";
+import {
+  getProjects,
+  deleteProject,
+  recalculateAllProjectsProgress,
+} from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   useSuccessNotification,
@@ -82,6 +86,22 @@ const Projects: React.FC = () => {
 
     fetchProjects();
   }, [userData?.id]);
+
+  // Add effect to recalculate project progress when the component loads
+  useEffect(() => {
+    const updateProjectsProgress = async () => {
+      if (!userData?.id || userData?.userType !== "employer") return;
+
+      try {
+        await recalculateAllProjectsProgress(userData.id);
+        console.log("Updated all projects progress");
+      } catch (error) {
+        console.error("Error updating projects progress:", error);
+      }
+    };
+
+    updateProjectsProgress();
+  }, [userData?.id, userData?.userType]);
 
   // Extract unique categories for filter from real data
   const categories =

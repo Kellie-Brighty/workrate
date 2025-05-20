@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import Modal from "../../components/Modal";
 import { useAuth } from "../../contexts/AuthContext";
 import {
@@ -8,8 +7,25 @@ import {
   updateTask,
   getProject,
   getUserData,
+  getEmployeesPerformance,
+  deleteTask,
+  createDueDateRenegotiationRequest,
+  getEmployeeRenegotiationRequests,
+  type DueDateRenegotiationRequest,
 } from "../../services/firebase";
 import type { TaskData } from "../../services/firebase";
+
+// Define an interface for Employee data
+interface EmployeeData {
+  id: string;
+  name: string;
+  email: string;
+  position?: string;
+  department?: string;
+  employerId?: string;
+  status?: string;
+  [key: string]: any; // Allow other properties
+}
 
 // Extended interface for task with additional properties set during formatting
 interface FormattedTask extends TaskData {
@@ -17,6 +33,7 @@ interface FormattedTask extends TaskData {
   projectName?: string;
   createdByName?: string;
   createdByAvatar?: string;
+  dueDateRenegotiationStatus?: "pending" | "approved" | "rejected";
 }
 
 // Extended interface for project data returned from getProject
@@ -34,6 +51,44 @@ interface UserData {
   [key: string]: any; // Allow other properties
 }
 
+
+// Helper function to calculate time remaining
+const calculateTimeRemaining = (
+  dueDate: string
+): { days: number; hours: number } => {
+  const now = new Date();
+  const due = new Date(dueDate);
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor(
+    (diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+  );
+
+  return { days: diffDays, hours: diffHours };
+};
+
+// Helper function to get nearest upcoming task
+const getUpcomingTask = (
+  tasks: DisplayTask[]
+): {
+  task: DisplayTask | null;
+  timeRemaining: { days: number; hours: number } | null;
+} => {
+  if (!tasks.length) return { task: null, timeRemaining: null };
+
+  // Filter out completed tasks and sort by due date (closest first)
+  const incompleteTasks = tasks.filter((task) => task.status !== "Completed");
+  if (!incompleteTasks.length) return { task: null, timeRemaining: null };
+
+  const sortedTasks = [...incompleteTasks].sort(
+    (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+  );
+
+  const closestTask = sortedTasks[0];
+  const timeRemaining = calculateTimeRemaining(closestTask.dueDate);
+
+  return { task: closestTask, timeRemaining };
+};
 
 // Helper function to format task data from Firebase
 const formatTask = async (task: FormattedTask) => {
@@ -107,6 +162,7 @@ type DisplayTask = {
   attachments: any[];
   timeEstimate: string;
   timeSpent: string;
+  dueDateRenegotiationStatus?: "pending" | "approved" | "rejected";
 };
 
 // Define types for other state variables
@@ -127,13 +183,28 @@ const Tasks = () => {
   const [projectFilter, setProjectFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Top performers state
+  const [topPerformers, setTopPerformers] = useState<any[]>([]);
+  const [loadingPerformers, setLoadingPerformers] = useState(true);
+
   // Modal states
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [taskToDelete, _setTaskToDelete] = useState<string | null>(null);
   const [showTaskCompleteModal, setShowTaskCompleteModal] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<TaskToComplete | null>(
     null
   );
+
+  // Due date renegotiation states
+  const [showRenegotiateModal, setShowRenegotiateModal] = useState(false);
+  const [renegotiationData, setRenegotiationData] = useState({
+    requestedDueDate: "",
+    reason: "",
+  });
+  const [_renegotiationRequests, setRenegotiationRequests] = useState<
+    DueDateRenegotiationRequest[]
+  >([]);
+  const [_loadingRenegotiations, setLoadingRenegotiations] = useState(false);
 
   // Set up real-time listener for tasks
   useEffect(() => {
@@ -179,6 +250,81 @@ const Tasks = () => {
     return () => {
       unsubscribePromise.then((unsubscribe) => unsubscribe && unsubscribe());
     };
+  }, [userData?.email]);
+
+  // Fetch top performers
+  useEffect(() => {
+    if (!userData?.email) return;
+
+    const fetchTopPerformers = async () => {
+      setLoadingPerformers(true);
+      try {
+        // First get the employee data to find their employer
+        const employeeData = (await getEmployeeByEmail(
+          userData.email
+        )) as EmployeeData;
+
+        if (!employeeData || !employeeData.employerId) {
+          console.error("No employee record or employer found");
+          setLoadingPerformers(false);
+          return;
+        }
+
+        // Get performance data for all employees under the same employer
+        const employeesPerformance = await getEmployeesPerformance(
+          employeeData.employerId
+        );
+
+        // Cast the entire array and filter for valid entries
+        const validPerformers = (employeesPerformance as any[]).filter(
+          (emp) =>
+            emp &&
+            typeof emp.metrics === "object" &&
+            emp.metrics?.progressScore > 0
+        );
+
+        // Sort by overall progress score (highest first)
+        const sortedPerformance = validPerformers.sort(
+          (a, b) => b.metrics.progressScore - a.metrics.progressScore
+        );
+
+        // Take the top 3 performers
+        setTopPerformers(sortedPerformance.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching top performers:", error);
+      } finally {
+        setLoadingPerformers(false);
+      }
+    };
+
+    fetchTopPerformers();
+  }, [userData?.email]);
+
+  // Add effect to load employee's renegotiation requests
+  useEffect(() => {
+    const fetchRenegotiationRequests = async () => {
+      if (!userData?.email) return;
+
+      try {
+        // Get employee record by email
+        const employeeData = (await getEmployeeByEmail(
+          userData.email
+        )) as EmployeeData;
+        if (!employeeData) return;
+
+        setLoadingRenegotiations(true);
+        const requests = (await getEmployeeRenegotiationRequests(
+          employeeData.id
+        )) as unknown as DueDateRenegotiationRequest[];
+        setRenegotiationRequests(requests);
+      } catch (error) {
+        console.error("Error fetching renegotiation requests:", error);
+      } finally {
+        setLoadingRenegotiations(false);
+      }
+    };
+
+    fetchRenegotiationRequests();
   }, [userData?.email]);
 
   // Apply filters to tasks
@@ -308,19 +454,22 @@ const Tasks = () => {
     setSelectedTask(null);
   };
 
-  // Delete task handler
-  const handleDeleteTask = (taskId: string) => {
-    setTaskToDelete(taskId);
-    setShowDeleteConfirmModal(true);
-  };
-
-  const confirmDeleteTask = () => {
+  const confirmDeleteTask = async () => {
     if (taskToDelete) {
-      setTasks(tasks.filter((task) => task.id !== taskToDelete));
-      if (selectedTask && selectedTask.id === taskToDelete) {
-        setShowTaskDetails(false);
+      try {
+        // Call the Firebase delete function
+        await deleteTask(taskToDelete);
+
+        // Update local state
+        setTasks(tasks.filter((task) => task.id !== taskToDelete));
+        if (selectedTask && selectedTask.id === taskToDelete) {
+          setShowTaskDetails(false);
+        }
+      } catch (error) {
+        console.error("Error deleting task:", error);
+      } finally {
+        setShowDeleteConfirmModal(false);
       }
-      setShowDeleteConfirmModal(false);
     }
   };
 
@@ -331,6 +480,81 @@ const Tasks = () => {
       (item: any) => item.completed
     ).length;
     return Math.round((completedItems / task.checklist.length) * 100);
+  };
+
+  // Handle renegotiation modal open
+  const handleOpenRenegotiateModal = () => {
+    if (!selectedTask) return;
+
+    setRenegotiationData({
+      requestedDueDate: selectedTask.dueDate,
+      reason: "",
+    });
+    setShowRenegotiateModal(true);
+  };
+
+  // Handle renegotiation data change
+  const handleRenegotiationChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setRenegotiationData({
+      ...renegotiationData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  // Submit renegotiation request
+  const submitRenegotiationRequest = async () => {
+    if (!selectedTask || !userData?.email) return;
+
+    try {
+      // Get employee ID from email
+      const employeeData = (await getEmployeeByEmail(
+        userData.email
+      )) as EmployeeData;
+      if (!employeeData) {
+        console.error("Employee data not found");
+        return;
+      }
+
+      // Create the request
+      await createDueDateRenegotiationRequest({
+        taskId: selectedTask.id,
+        employeeId: employeeData.id,
+        employeeName: employeeData.name,
+        taskTitle: selectedTask.title,
+        projectId: selectedTask.project.id,
+        projectName: selectedTask.project.name,
+        currentDueDate: selectedTask.dueDate,
+        requestedDueDate: renegotiationData.requestedDueDate,
+        reason: renegotiationData.reason,
+        status: "pending",
+      });
+
+      // Update local state to show pending status
+      setTasks(
+        tasks.map((task) => {
+          if (task.id === selectedTask.id) {
+            return {
+              ...task,
+              dueDateRenegotiationStatus: "pending",
+            };
+          }
+          return task;
+        })
+      );
+
+      // Close modals
+      setShowRenegotiateModal(false);
+
+      // Refresh renegotiation requests
+      const requests = (await getEmployeeRenegotiationRequests(
+        employeeData.id
+      )) as unknown as DueDateRenegotiationRequest[];
+      setRenegotiationRequests(requests);
+    } catch (error) {
+      console.error("Error submitting renegotiation request:", error);
+    }
   };
 
   return (
@@ -364,6 +588,176 @@ const Tasks = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Upcoming Task with Closest Due Date */}
+      {!loading &&
+        (() => {
+          const { task, timeRemaining } = getUpcomingTask(tasks);
+          if (task && timeRemaining) {
+            const isUrgent = timeRemaining.days < 2;
+            return (
+              <div
+                className={`mb-6 p-4 rounded-lg shadow ${
+                  isUrgent
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-blue-50 border border-blue-200"
+                }`}
+              >
+                <div className="flex flex-col md:flex-row justify-between">
+                  <div>
+                    <div className="flex items-center mb-1">
+                      <svg
+                        className={`h-5 w-5 mr-2 ${
+                          isUrgent ? "text-red-500" : "text-blue-500"
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span
+                        className={`font-medium ${
+                          isUrgent ? "text-red-700" : "text-blue-700"
+                        }`}
+                      >
+                        Upcoming Deadline
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      {task.title}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Project: {task.project.name}
+                    </p>
+                  </div>
+                  <div
+                    className={`mt-3 md:mt-0 text-right ${
+                      isUrgent ? "text-red-700" : "text-blue-700"
+                    }`}
+                  >
+                    <div className="text-xl font-bold">
+                      {timeRemaining.days > 0
+                        ? `${timeRemaining.days} day${
+                            timeRemaining.days !== 1 ? "s" : ""
+                          }`
+                        : ""}
+                      {timeRemaining.hours > 0 || timeRemaining.days === 0
+                        ? ` ${timeRemaining.hours} hour${
+                            timeRemaining.hours !== 1 ? "s" : ""
+                          }`
+                        : ""}
+                    </div>
+                    <div className="text-sm">remaining until due</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Due on {new Date(task.dueDate).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={() => handleOpenTaskDetails(task)}
+                    className={`text-sm px-3 py-1 rounded ${
+                      isUrgent
+                        ? "bg-red-200 text-red-800 hover:bg-red-300"
+                        : "bg-blue-200 text-blue-800 hover:bg-blue-300"
+                    }`}
+                  >
+                    View Task
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+      {/* Top Performers Section */}
+      <div className="bg-white shadow rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">
+          Top Performers
+        </h2>
+
+        {loadingPerformers ? (
+          <div className="flex space-x-6 py-2">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="flex-1 animate-pulse flex flex-col items-center"
+              >
+                <div className="rounded-full bg-gray-200 h-16 w-16 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
+                <div className="h-3 bg-gray-200 rounded w-16 mb-3"></div>
+                <div className="h-2 bg-gray-200 rounded w-full mb-2"></div>
+              </div>
+            ))}
+          </div>
+        ) : topPerformers.length > 0 ? (
+          <div className="flex flex-wrap gap-4">
+            {topPerformers.map((performer) => (
+              <div
+                key={performer.employeeId}
+                className="flex-1 min-w-[240px] bg-gray-50 rounded-lg p-4 flex flex-col items-center"
+              >
+                <img
+                  src={performer.employeeAvatar}
+                  alt={performer.employeeName}
+                  className="h-16 w-16 rounded-full mb-2"
+                />
+                <h3 className="font-medium text-gray-900">
+                  {performer.employeeName}
+                </h3>
+                <p className="text-sm text-gray-500 mb-3">
+                  {performer.employeePosition}
+                </p>
+
+                <div className="w-full mb-1">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>Task Completion</span>
+                    <span className="font-medium">
+                      {Math.round(performer.metrics.taskCompletionRate)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className="bg-green-500 h-1.5 rounded-full"
+                      style={{
+                        width: `${performer.metrics.taskCompletionRate}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="w-full mb-1">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>On-Time Completion</span>
+                    <span className="font-medium">
+                      {Math.round(performer.metrics.onTimeCompletionRate)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-500 h-1.5 rounded-full"
+                      style={{
+                        width: `${performer.metrics.onTimeCompletionRate}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-gray-500">No performance data available yet.</p>
+          </div>
+        )}
       </div>
 
       {/* Filter section */}
@@ -605,6 +999,23 @@ const Tasks = () => {
                     <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
                       {selectedTask.project.name}
                     </span>
+
+                    {/* Show badge if there's a pending renegotiation */}
+                    {selectedTask.dueDateRenegotiationStatus === "pending" && (
+                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                        Due Date Change Requested
+                      </span>
+                    )}
+                    {selectedTask.dueDateRenegotiationStatus === "approved" && (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                        Due Date Change Approved
+                      </span>
+                    )}
+                    {selectedTask.dueDateRenegotiationStatus === "rejected" && (
+                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                        Due Date Change Rejected
+                      </span>
+                    )}
                   </div>
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-800 break-words">
                     {selectedTask.title}
@@ -791,17 +1202,56 @@ const Tasks = () => {
                       <h4 className="text-sm font-medium text-gray-500">
                         Due Date
                       </h4>
-                      <p className="mt-1 text-sm text-gray-900">
-                        {new Date(selectedTask.dueDate).toLocaleDateString(
-                          undefined,
-                          {
-                            weekday: "long",
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          }
+                      <div className="mt-1 flex items-center justify-between">
+                        <p className="text-sm text-gray-900">
+                          {new Date(selectedTask.dueDate).toLocaleDateString(
+                            undefined,
+                            {
+                              weekday: "long",
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            }
+                          )}
+                        </p>
+
+                        {/* Renegotiate button - only show if not already pending */}
+                        {!selectedTask.dueDateRenegotiationStatus && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenRenegotiateModal();
+                            }}
+                            className="text-xs text-indigo-600 hover:text-indigo-800"
+                          >
+                            Request Change
+                          </button>
                         )}
-                      </p>
+                      </div>
+
+                      {/* Show renegotiation status if applicable */}
+                      {selectedTask.dueDateRenegotiationStatus && (
+                        <div className="mt-2 text-xs">
+                          {selectedTask.dueDateRenegotiationStatus ===
+                            "pending" && (
+                            <span className="text-yellow-600">
+                              Due date change request is pending approval
+                            </span>
+                          )}
+                          {selectedTask.dueDateRenegotiationStatus ===
+                            "approved" && (
+                            <span className="text-green-600">
+                              Due date change was approved
+                            </span>
+                          )}
+                          {selectedTask.dueDateRenegotiationStatus ===
+                            "rejected" && (
+                            <span className="text-red-600">
+                              Due date change was rejected
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -840,26 +1290,25 @@ const Tasks = () => {
                   >
                     Close
                   </button>
+                </div>
+                {selectedTask && selectedTask.status !== "Completed" && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteTask(selectedTask.id);
+                      handleOpenRenegotiateModal();
                     }}
-                    className="px-4 py-2 bg-red-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-center"
+                    disabled={
+                      selectedTask.dueDateRenegotiationStatus === "pending"
+                    }
                   >
-                    Delete Task
+                    {selectedTask.dueDateRenegotiationStatus === "pending"
+                      ? "Request Pending"
+                      : selectedTask.dueDateRenegotiationStatus === "rejected"
+                      ? "Request New Due Date"
+                      : "Request Due Date Change"}
                   </button>
-                </div>
-                <Link
-                  to="/employee/timetracking"
-                  className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-center"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCloseTaskDetails();
-                  }}
-                >
-                  Track Time for This Task
-                </Link>
+                )}
               </div>
             </div>
           </div>
@@ -932,6 +1381,124 @@ const Tasks = () => {
         <p className="text-gray-500 text-sm mt-2">
           This will update the task status to Completed.
         </p>
+      </Modal>
+
+      {/* Due Date Renegotiation Modal */}
+      <Modal
+        isOpen={showRenegotiateModal}
+        onClose={() => setShowRenegotiateModal(false)}
+        title="Request Due Date Change"
+        size="medium"
+        actions={
+          <>
+            <button
+              onClick={() => setShowRenegotiateModal(false)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitRenegotiationRequest}
+              disabled={
+                !renegotiationData.requestedDueDate || !renegotiationData.reason
+              }
+              className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
+                !renegotiationData.requestedDueDate || !renegotiationData.reason
+                  ? "bg-indigo-300 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+              }`}
+            >
+              Submit Request
+            </button>
+          </>
+        }
+      >
+        {selectedTask && (
+          <div className="space-y-4 py-4">
+            <div>
+              <label
+                htmlFor="currentDueDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Current Due Date
+              </label>
+              <input
+                type="text"
+                id="currentDueDate"
+                className="mt-1 bg-gray-50 block w-full sm:text-sm border-gray-300 rounded-md cursor-not-allowed"
+                value={new Date(selectedTask.dueDate).toLocaleDateString()}
+                readOnly
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="requestedDueDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Requested Due Date
+              </label>
+              <input
+                type="date"
+                id="requestedDueDate"
+                name="requestedDueDate"
+                className="mt-1 block w-full sm:text-sm border-gray-300 rounded-md"
+                value={renegotiationData.requestedDueDate}
+                onChange={handleRenegotiationChange}
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="reason"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Reason for Change (Required)
+              </label>
+              <textarea
+                id="reason"
+                name="reason"
+                rows={4}
+                className="mt-1 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="Please explain why you need to change the due date..."
+                value={renegotiationData.reason}
+                onChange={handleRenegotiationChange}
+              />
+            </div>
+
+            <div className="bg-yellow-50 p-3 rounded-md">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-5 w-5 text-yellow-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-yellow-800">
+                    Important Note
+                  </h3>
+                  <div className="mt-2 text-sm text-yellow-700">
+                    <p>
+                      Your request will need to be approved by your manager. The
+                      task due date will remain unchanged until the request is
+                      approved.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Add Task Button */}
