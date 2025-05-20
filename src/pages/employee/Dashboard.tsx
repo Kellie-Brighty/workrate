@@ -579,24 +579,9 @@ const EmployeeDashboard: React.FC = () => {
                     </Link>
                     <Link
                       to="/employee/timetracking"
-                      className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
-                      role="menuitem"
+                      className="text-sm text-gray-500 hover:text-gray-700"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="mr-3 h-5 w-5 text-gray-400 group-hover:text-indigo-500"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      Time Tracking
+                      View Time Tracking
                     </Link>
                     <div className="border-t border-gray-100 my-1"></div>
                     <button

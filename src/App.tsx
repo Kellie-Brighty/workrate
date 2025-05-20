@@ -9,7 +9,6 @@ import Projects from "./pages/employer/Projects";
 import ProjectDetail from "./pages/employer/ProjectDetail";
 import Tasks from "./pages/employer/Tasks";
 import TaskDetail from "./pages/employer/TaskDetail";
-import TimeTracking from "./pages/employee/TimeTracking";
 import TimeApprovals from "./pages/employer/TimeApprovals";
 import Analytics from "./pages/employer/Analytics";
 import EmployerRewards from "./pages/employer/Rewards";
@@ -161,17 +160,6 @@ function App() {
             <ProtectedRoute requiredRole="employee">
               <Layout userType="employee">
                 <EmployeeDashboard />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/employee/timetracking"
-          element={
-            <ProtectedRoute requiredRole="employee">
-              <Layout userType="employee">
-                <TimeTracking />
               </Layout>
             </ProtectedRoute>
           }

@@ -1029,27 +1029,9 @@ const Projects = () => {
                   <div className="mt-6 pt-6 border-t">
                     <Link
                       to="/employee/timetracking"
-                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md flex items-center justify-center hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCloseProjectDetails();
-                      }}
+                      className="text-sm text-gray-500 hover:text-gray-700"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-2"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      Track Time for This Project
+                      View Time Tracking
                     </Link>
                   </div>
                 </div>
