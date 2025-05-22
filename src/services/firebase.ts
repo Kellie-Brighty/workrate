@@ -1976,5 +1976,288 @@ export const deleteManager = async (managerId: string) => {
   }
 };
 
+// Rewards interfaces
+export interface Reward {
+  id?: string;
+  name: string;
+  description: string;
+  type: "monetary" | "time-off" | "development" | "team" | "other";
+  value: string;
+  pointsCost: number;
+  criteria: string;
+  status: "active" | "inactive";
+  createdAt?: any; // Timestamp
+  updatedAt?: any; // Timestamp
+}
+
+export interface EmployeeReward {
+  id?: string;
+  employeeId: string;
+  rewardId: string;
+  rewardName: string;
+  rewardType: string;
+  rewardValue: string;
+  dateAwarded: any; // Timestamp
+  status: "pending" | "approved" | "claimed";
+  claimedDate?: any; // Timestamp
+  createdAt?: any; // Timestamp
+  updatedAt?: any; // Timestamp
+}
+
+export interface Achievement {
+  id?: string;
+  employeeId: string;
+  name: string;
+  description: string;
+  pointsAwarded: number;
+  date: any; // Timestamp
+  createdAt?: any; // Timestamp
+}
+
+export interface EmployeePoints {
+  id?: string;
+  employeeId: string;
+  points: number;
+  lastUpdated: any; // Timestamp
+  createdAt?: any; // Timestamp
+  updatedAt?: any; // Timestamp
+}
+
+// Rewards functions
+export const createReward = async (rewardData: Reward) => {
+  try {
+    const rewardRef = await addDoc(collection(db, "rewards"), {
+      ...rewardData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { id: rewardRef.id, ...rewardData };
+  } catch (error) {
+    console.error("Error creating reward:", error);
+    throw error;
+  }
+};
+
+export const updateReward = async (
+  rewardId: string,
+  rewardData: Partial<Reward>
+) => {
+  try {
+    const rewardRef = doc(db, "rewards", rewardId);
+    await updateDoc(rewardRef, {
+      ...rewardData,
+      updatedAt: serverTimestamp(),
+    });
+    return { id: rewardId, ...rewardData };
+  } catch (error) {
+    console.error("Error updating reward:", error);
+    throw error;
+  }
+};
+
+export const getRewards = async (status?: "active" | "inactive") => {
+  try {
+    let rewardsQuery;
+    if (status) {
+      rewardsQuery = query(
+        collection(db, "rewards"),
+        where("status", "==", status)
+      );
+    } else {
+      rewardsQuery = collection(db, "rewards");
+    }
+    const querySnapshot = await getDocs(rewardsQuery);
+    return querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting rewards:", error);
+    throw error;
+  }
+};
+
+export const assignReward = async (employeeId: string, rewardId: string) => {
+  try {
+    // Get reward details
+    const rewardDoc = await getDoc(doc(db, "rewards", rewardId));
+    if (!rewardDoc.exists()) {
+      throw new Error("Reward not found");
+    }
+    const reward = rewardDoc.data() as Reward;
+
+    // Create employee reward assignment
+    const employeeRewardRef = await addDoc(collection(db, "employeeRewards"), {
+      employeeId,
+      rewardId,
+      rewardName: reward.name,
+      rewardType: reward.type,
+      rewardValue: reward.value,
+      dateAwarded: serverTimestamp(),
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return { id: employeeRewardRef.id, ...reward };
+  } catch (error) {
+    console.error("Error assigning reward:", error);
+    throw error;
+  }
+};
+
+export const getEmployeeRewards = async (employeeId: string) => {
+  try {
+    const q = query(
+      collection(db, "employeeRewards"),
+      where("employeeId", "==", employeeId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting employee rewards:", error);
+    throw error;
+  }
+};
+
+export const updateEmployeeRewardStatus = async (
+  employeeRewardId: string,
+  status: "approved" | "claimed",
+  claimedDate?: Date
+) => {
+  try {
+    const employeeRewardRef = doc(db, "employeeRewards", employeeRewardId);
+    const updateData: any = {
+      status,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (status === "claimed" && claimedDate) {
+      updateData.claimedDate = claimedDate;
+    }
+
+    await updateDoc(employeeRewardRef, updateData);
+    return { id: employeeRewardId, status };
+  } catch (error) {
+    console.error("Error updating employee reward status:", error);
+    throw error;
+  }
+};
+
+export const createAchievement = async (achievementData: Achievement) => {
+  try {
+    const achievementRef = await addDoc(collection(db, "achievements"), {
+      ...achievementData,
+      createdAt: serverTimestamp(),
+    });
+
+    // Update employee points
+    await updateEmployeePoints(
+      achievementData.employeeId,
+      achievementData.pointsAwarded
+    );
+
+    return { id: achievementRef.id, ...achievementData };
+  } catch (error) {
+    console.error("Error creating achievement:", error);
+    throw error;
+  }
+};
+
+export const getEmployeeAchievements = async (employeeId: string) => {
+  try {
+    const q = query(
+      collection(db, "achievements"),
+      where("employeeId", "==", employeeId),
+      orderBy("date", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting employee achievements:", error);
+    throw error;
+  }
+};
+
+export const getEmployeePoints = async (employeeId: string) => {
+  try {
+    const pointsDoc = await getDoc(doc(db, "employeePoints", employeeId));
+    if (pointsDoc.exists()) {
+      return { id: pointsDoc.id, ...pointsDoc.data() };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting employee points:", error);
+    throw error;
+  }
+};
+
+export const updateEmployeePoints = async (
+  employeeId: string,
+  pointsToAdd: number
+) => {
+  try {
+    const pointsRef = doc(db, "employeePoints", employeeId);
+    const pointsDoc = await getDoc(pointsRef);
+
+    if (pointsDoc.exists()) {
+      const currentPoints = pointsDoc.data().points;
+      await updateDoc(pointsRef, {
+        points: currentPoints + pointsToAdd,
+        lastUpdated: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(pointsRef, {
+        employeeId,
+        points: pointsToAdd,
+        lastUpdated: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error("Error updating employee points:", error);
+    throw error;
+  }
+};
+
+export const onEmployeeRewardsUpdate = (
+  callback: (rewards: any[]) => void,
+  employeeId: string
+) => {
+  const q = query(
+    collection(db, "employeeRewards"),
+    where("employeeId", "==", employeeId)
+  );
+  return onSnapshot(q, (snapshot) => {
+    const rewards = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    callback(rewards);
+  });
+};
+
+export const onEmployeePointsUpdate = (
+  callback: (points: any) => void,
+  employeeId: string
+) => {
+  const pointsRef = doc(db, "employeePoints", employeeId);
+  return onSnapshot(pointsRef, (doc) => {
+    if (doc.exists()) {
+      callback({ id: doc.id, ...doc.data() });
+    } else {
+      callback(null);
+    }
+  });
+};
+
 export { auth, db };
 export default app;

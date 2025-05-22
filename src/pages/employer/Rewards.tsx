@@ -1,101 +1,45 @@
-import React, { useState } from "react";
-
-// Mock data for rewards
-const initialRewards = [
-  {
-    id: 1,
-    name: "Performance Bonus",
-    description: "Cash bonus for exceeding quarterly targets",
-    type: "monetary",
-    value: "$500",
-    criteria: "Exceed quarterly targets by at least 20%",
-    status: "active",
-  },
-  {
-    id: 2,
-    name: "Extra Day Off",
-    description: "An additional paid day off",
-    type: "time-off",
-    value: "1 day",
-    criteria: "Complete all assigned tasks for the month on time",
-    status: "active",
-  },
-  {
-    id: 3,
-    name: "Professional Development Budget",
-    description: "Budget for courses, books, or conferences",
-    type: "development",
-    value: "$1,000",
-    criteria: "12 months of consistent high performance",
-    status: "active",
-  },
-  {
-    id: 4,
-    name: "Team Lunch",
-    description: "Free lunch for the team",
-    type: "team",
-    value: "Meal",
-    criteria: "Team completes project ahead of schedule",
-    status: "inactive",
-  },
-];
-
-// Mock data for employees who have earned rewards
-const rewardAssignments = [
-  {
-    id: 1,
-    employeeId: 2,
-    employeeName: "Sarah Johnson",
-    rewardId: 1,
-    rewardName: "Performance Bonus",
-    dateAwarded: "2023-05-15",
-    status: "pending", // pending, approved, claimed
-  },
-  {
-    id: 2,
-    employeeId: 1,
-    employeeName: "Jason Chen",
-    rewardId: 2,
-    rewardName: "Extra Day Off",
-    dateAwarded: "2023-05-10",
-    status: "claimed",
-  },
-  {
-    id: 3,
-    employeeId: 3,
-    employeeName: "Michael Brown",
-    rewardId: 3,
-    rewardName: "Professional Development Budget",
-    dateAwarded: "2023-04-28",
-    status: "approved",
-  },
-];
-
-// Mock employees data
-const employees = [
-  { id: 1, name: "Jason Chen", position: "Frontend Developer" },
-  { id: 2, name: "Sarah Johnson", position: "UX Designer" },
-  { id: 3, name: "Michael Brown", position: "Backend Developer" },
-  { id: 4, name: "Emily Davis", position: "Project Manager" },
-];
+import React, { useState, useEffect } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  getRewards,
+  createReward,
+  updateReward,
+  getEmployees,
+  assignReward,
+  updateEmployeeRewardStatus,
+  type Reward,
+  type EmployeeReward,
+} from "../../services/firebase";
+import {
+  useSuccessNotification,
+  useErrorNotification,
+} from "../../contexts/NotificationContext";
 
 const Rewards: React.FC = () => {
+  const { currentUser } = useAuth();
+  const showSuccess = useSuccessNotification();
+  const showError = useErrorNotification();
   // State for rewards and assignments
-  const [rewards, setRewards] = useState(initialRewards);
-  const [assignments, setAssignments] = useState(rewardAssignments);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [assignments, _setAssignments] = useState<EmployeeReward[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [isLoadingRewards, setIsLoadingRewards] = useState(true);
 
   // State for modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
 
   // State for forms
-  const [newReward, setNewReward] = useState({
+  const [newReward, setNewReward] = useState<
+    Omit<Reward, "id" | "createdAt" | "updatedAt">
+  >({
     name: "",
     description: "",
     type: "monetary",
     value: "",
     criteria: "",
     status: "active",
+    pointsCost: 0,
   });
 
   const [newAssignment, setNewAssignment] = useState({
@@ -106,75 +50,109 @@ const Rewards: React.FC = () => {
   // State for current view
   const [currentView, setCurrentView] = useState("rewards"); // rewards, assignments
 
+  // Load initial data
+  useEffect(() => {
+    if (currentUser?.uid) {
+      // Load rewards
+      const loadRewards = async () => {
+        try {
+          setIsLoadingRewards(true);
+          const rewards = (await getRewards()) as Reward[];
+          setRewards(rewards);
+        } catch (error) {
+          console.error("Error loading rewards:", error);
+          showError("Error", "Failed to load rewards");
+        } finally {
+          setIsLoadingRewards(false);
+        }
+      };
+      loadRewards();
+
+      // Load employees
+      const loadEmployees = async () => {
+        const employees = await getEmployees(currentUser.uid);
+        setEmployees(employees);
+      };
+      loadEmployees();
+    }
+  }, [currentUser?.uid]);
+
   // Handle creating a new reward
-  const handleCreateReward = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateReward = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const rewardWithId = {
-      ...newReward,
-      id: rewards.length + 1,
-    };
-    setRewards([...rewards, rewardWithId]);
-    setNewReward({
-      name: "",
-      description: "",
-      type: "monetary",
-      value: "",
-      criteria: "",
-      status: "active",
-    });
-    setShowCreateModal(false);
+    try {
+      const rewardData = {
+        ...newReward,
+        pointsCost: parseInt(newReward.value.replace(/[^0-9]/g, "")) || 0,
+      };
+      await createReward(rewardData);
+
+      // Reset form and close modal
+      setNewReward({
+        name: "",
+        description: "",
+        type: "monetary",
+        value: "",
+        criteria: "",
+        status: "active",
+        pointsCost: 0,
+      });
+      setShowCreateModal(false);
+
+      // Show success notification
+      showSuccess("Success", "Reward created successfully");
+
+      // Refresh rewards list
+      const updatedRewards = (await getRewards()) as Reward[];
+      setRewards(updatedRewards);
+    } catch (error) {
+      console.error("Error creating reward:", error);
+      showError("Error", "Failed to create reward");
+    }
   };
 
   // Handle assigning a reward
-  const handleAssignReward = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAssignReward = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const employee = employees.find(
-      (emp) => emp.id === parseInt(newAssignment.employeeId)
-    );
-    const reward = rewards.find(
-      (rew) => rew.id === parseInt(newAssignment.rewardId)
-    );
-
-    if (employee && reward) {
-      const assignment = {
-        id: assignments.length + 1,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        rewardId: reward.id,
-        rewardName: reward.name,
-        dateAwarded: new Date().toISOString().split("T")[0],
-        status: "pending",
-      };
-      setAssignments([...assignments, assignment]);
+    try {
+      await assignReward(newAssignment.employeeId, newAssignment.rewardId);
       setNewAssignment({
         employeeId: "",
         rewardId: "",
       });
       setShowAssignModal(false);
+    } catch (error) {
+      console.error("Error assigning reward:", error);
+      // You might want to show an error message to the user here
     }
   };
 
   // Handle updating assignment status
-  const handleUpdateStatus = (id: number, status: string) => {
-    setAssignments(
-      assignments.map((assignment) =>
-        assignment.id === id ? { ...assignment, status } : assignment
-      )
-    );
+  const handleUpdateStatus = async (
+    id: string,
+    status: "approved" | "claimed"
+  ) => {
+    try {
+      await updateEmployeeRewardStatus(id, status);
+    } catch (error) {
+      console.error("Error updating reward status:", error);
+      // You might want to show an error message to the user here
+    }
   };
 
   // Handle toggle reward status
-  const handleToggleRewardStatus = (id: number) => {
-    setRewards(
-      rewards.map((reward) =>
-        reward.id === id
-          ? {
-              ...reward,
-              status: reward.status === "active" ? "inactive" : "active",
-            }
-          : reward
-      )
-    );
+  const handleToggleRewardStatus = async (
+    id: string,
+    currentStatus: "active" | "inactive"
+  ) => {
+    try {
+      await updateReward(id, {
+        status: currentStatus === "active" ? "inactive" : "active",
+      });
+    } catch (error) {
+      console.error("Error toggling reward status:", error);
+      // You might want to show an error message to the user here
+    }
   };
 
   return (
@@ -243,7 +221,60 @@ const Rewards: React.FC = () => {
             </div>
 
             {/* Rewards Table */}
-            <div className="flex flex-col">
+            {isLoadingRewards ? (
+              <div className="text-center py-12 bg-white shadow rounded-lg">
+                <div className="flex justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+                </div>
+                <p className="mt-4 text-sm text-gray-500">Loading rewards...</p>
+              </div>
+            ) : rewards.length === 0 ? (
+              <div className="text-center py-12 bg-white shadow rounded-lg">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  No rewards created yet
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Get started by creating your first reward for your employees.
+                </p>
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <svg
+                      className="-ml-1 mr-2 h-5 w-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    Create Reward
+                  </button>
+                </div>
+              </div>
+            ) : (
               <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div className="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
                   <div className="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
@@ -336,7 +367,11 @@ const Rewards: React.FC = () => {
                               </button>
                               <button
                                 onClick={() =>
-                                  handleToggleRewardStatus(reward.id)
+                                  reward.id &&
+                                  handleToggleRewardStatus(
+                                    reward.id,
+                                    reward.status
+                                  )
                                 }
                                 className={`${
                                   reward.status === "active"
@@ -356,7 +391,7 @@ const Rewards: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         )}
 
@@ -389,7 +424,53 @@ const Rewards: React.FC = () => {
             </div>
 
             {/* Assignments Table */}
-            <div className="flex flex-col">
+            {assignments.length === 0 ? (
+              <div className="text-center py-12 bg-white shadow rounded-lg">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  No rewards assigned yet
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Start recognizing your employees by assigning rewards.
+                </p>
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowAssignModal(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <svg
+                      className="-ml-1 mr-2 h-5 w-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    Assign Reward
+                  </button>
+                </div>
+              </div>
+            ) : (
               <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div className="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
                   <div className="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
@@ -433,7 +514,11 @@ const Rewards: React.FC = () => {
                           <tr key={assignment.id}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-900">
-                                {assignment.employeeName}
+                                {
+                                  employees.find(
+                                    (emp) => emp.id === assignment.employeeId
+                                  )?.name
+                                }
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -463,6 +548,7 @@ const Rewards: React.FC = () => {
                                 <>
                                   <button
                                     onClick={() =>
+                                      assignment.id &&
                                       handleUpdateStatus(
                                         assignment.id,
                                         "approved"
@@ -474,20 +560,22 @@ const Rewards: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={() =>
+                                      assignment.id &&
                                       handleUpdateStatus(
                                         assignment.id,
-                                        "denied"
+                                        "approved"
                                       )
                                     }
-                                    className="text-red-600 hover:text-red-900"
+                                    className="text-green-600 hover:text-green-900"
                                   >
-                                    Deny
+                                    Mark as Claimed
                                   </button>
                                 </>
                               )}
                               {assignment.status === "approved" && (
                                 <button
                                   onClick={() =>
+                                    assignment.id &&
                                     handleUpdateStatus(assignment.id, "claimed")
                                   }
                                   className="text-green-600 hover:text-green-900"
@@ -503,7 +591,7 @@ const Rewards: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         )}
 
@@ -590,7 +678,12 @@ const Rewards: React.FC = () => {
                               onChange={(e) =>
                                 setNewReward({
                                   ...newReward,
-                                  type: e.target.value,
+                                  type: e.target.value as
+                                    | "monetary"
+                                    | "time-off"
+                                    | "development"
+                                    | "team"
+                                    | "other",
                                 })
                               }
                               className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"

@@ -1,163 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Modal from "../../components/Modal";
-
-// Mock data for the currently logged in employee
-const currentEmployee = {
-  id: 1,
-  name: "Jason Chen",
-  position: "Frontend Developer",
-  points: 350,
-};
-
-// Mock data for employee rewards
-const employeeRewards = [
-  {
-    id: 1,
-    rewardId: 2,
-    name: "Extra Day Off",
-    description: "An additional paid day off",
-    type: "time-off",
-    value: "1 day",
-    dateAwarded: "2023-05-10",
-    status: "claimed",
-    claimedDate: "2023-05-12",
-  },
-  {
-    id: 2,
-    rewardId: 5,
-    name: "Gift Card",
-    description: "Amazon gift card",
-    type: "monetary",
-    value: "$50",
-    dateAwarded: "2023-06-05",
-    status: "approved",
-    claimedDate: null,
-  },
-  {
-    id: 3,
-    rewardId: 1,
-    name: "Performance Bonus",
-    description: "Cash bonus for exceeding quarterly targets",
-    type: "monetary",
-    value: "$500",
-    dateAwarded: "2023-06-15",
-    status: "pending",
-    claimedDate: null,
-  },
-];
-
-// Mock data for available rewards catalog
-const availableRewards = [
-  {
-    id: 1,
-    name: "Performance Bonus",
-    description: "Cash bonus for exceeding quarterly targets",
-    type: "monetary",
-    value: "$500",
-    pointsCost: 300,
-    criteria: "Exceed quarterly targets by at least 20%",
-  },
-  {
-    id: 2,
-    name: "Extra Day Off",
-    description: "An additional paid day off",
-    type: "time-off",
-    value: "1 day",
-    pointsCost: 200,
-    criteria: "Complete all assigned tasks for the month on time",
-  },
-  {
-    id: 3,
-    name: "Professional Development Budget",
-    description: "Budget for courses, books, or conferences",
-    type: "development",
-    value: "$1,000",
-    pointsCost: 500,
-    criteria: "12 months of consistent high performance",
-  },
-  {
-    id: 4,
-    name: "Team Lunch",
-    description: "Free lunch for the team",
-    type: "team",
-    value: "Meal",
-    pointsCost: 150,
-    criteria: "Team completes project ahead of schedule",
-  },
-  {
-    id: 5,
-    name: "Gift Card",
-    description: "Amazon gift card",
-    type: "monetary",
-    value: "$50",
-    pointsCost: 100,
-    criteria: "Employee of the month",
-  },
-];
-
-// Mock achievements data
-const achievements = [
-  {
-    id: 1,
-    name: "Project Completion",
-    description: "Successfully completed the Website Redesign project",
-    date: "2023-04-15",
-    pointsAwarded: 100,
-  },
-  {
-    id: 2,
-    name: "Early Task Completion",
-    description: "Completed all weekly tasks ahead of schedule",
-    date: "2023-05-05",
-    pointsAwarded: 50,
-  },
-  {
-    id: 3,
-    name: "Client Feedback",
-    description: "Received positive feedback from client for work quality",
-    date: "2023-05-20",
-    pointsAwarded: 75,
-  },
-  {
-    id: 4,
-    name: "Perfect Attendance",
-    description: "Perfect attendance for the quarter",
-    date: "2023-06-01",
-    pointsAwarded: 25,
-  },
-  {
-    id: 5,
-    name: "Team Collaboration",
-    description: "Exceptional teamwork on the Mobile App project",
-    date: "2023-06-10",
-    pointsAwarded: 100,
-  },
-];
-
-// Add interfaces above the component
-interface EmployeeReward {
-  id: number;
-  rewardId: number;
-  name: string;
-  description: string;
-  type: string;
-  value: string;
-  dateAwarded: string;
-  status: string;
-  claimedDate: string | null;
-}
-
-interface Reward {
-  id: number;
-  name: string;
-  description: string;
-  type: string;
-  value: string;
-  pointsCost: number;
-  criteria: string;
-}
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  getEmployeeRewards,
+  getRewards,
+  getEmployeeAchievements,
+  getEmployeePoints,
+  updateEmployeeRewardStatus,
+  onEmployeeRewardsUpdate,
+  onEmployeePointsUpdate,
+  type Reward,
+  type EmployeeReward,
+  type Achievement,
+  type EmployeePoints,
+} from "../../services/firebase";
 
 const Rewards: React.FC = () => {
+  const { currentUser } = useAuth();
   const [currentView, setCurrentView] = useState("myRewards"); // myRewards, catalog, achievements
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [selectedReward, setSelectedReward] = useState<EmployeeReward | null>(
@@ -171,33 +30,114 @@ const Rewards: React.FC = () => {
     useState(false);
   const [requestedReward, setRequestedReward] = useState<Reward | null>(null);
 
+  // State for data
+  const [employeeRewards, setEmployeeRewards] = useState<EmployeeReward[]>([]);
+  const [availableRewards, setAvailableRewards] = useState<Reward[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [employeePoints, setEmployeePoints] = useState<EmployeePoints | null>(
+    null
+  );
+
   // Points needed for request (used in not enough points modal)
   const [pointsNeeded, setPointsNeeded] = useState(0);
 
-  // Mock function to handle reward claim
-  const handleClaimReward = () => {
-    // In a real app, this would send a request to the server
-    setShowClaimModal(false);
-    setShowClaimConfirmModal(true);
+  // Load initial data
+  useEffect(() => {
+    if (currentUser?.uid) {
+      // Load employee rewards
+      const loadEmployeeRewards = async () => {
+        const rewards = (await getEmployeeRewards(
+          currentUser.uid
+        )) as EmployeeReward[];
+        setEmployeeRewards(rewards);
+      };
+      loadEmployeeRewards();
+
+      // Load available rewards
+      const loadAvailableRewards = async () => {
+        const rewards = (await getRewards("active")) as Reward[];
+        setAvailableRewards(rewards);
+      };
+      loadAvailableRewards();
+
+      // Load achievements
+      const loadAchievements = async () => {
+        const achievements = (await getEmployeeAchievements(
+          currentUser.uid
+        )) as Achievement[];
+        setAchievements(achievements);
+      };
+      loadAchievements();
+
+      // Load employee points
+      const loadEmployeePoints = async () => {
+        const points = (await getEmployeePoints(
+          currentUser.uid
+        )) as EmployeePoints | null;
+        setEmployeePoints(points);
+      };
+      loadEmployeePoints();
+
+      // Set up real-time listeners
+      const unsubscribeRewards = onEmployeeRewardsUpdate((rewards) => {
+        setEmployeeRewards(rewards);
+      }, currentUser.uid);
+
+      const unsubscribePoints = onEmployeePointsUpdate((points) => {
+        setEmployeePoints(points);
+      }, currentUser.uid);
+
+      // Cleanup listeners on unmount
+      return () => {
+        unsubscribeRewards();
+        unsubscribePoints();
+      };
+    }
+  }, [currentUser?.uid]);
+
+  // Handle reward claim
+  const handleClaimReward = async () => {
+    if (selectedReward && currentUser?.uid) {
+      try {
+        await updateEmployeeRewardStatus(
+          selectedReward.id!,
+          "claimed",
+          new Date()
+        );
+        setShowClaimModal(false);
+        setShowClaimConfirmModal(true);
+      } catch (error) {
+        console.error("Error claiming reward:", error);
+        // You might want to show an error message to the user here
+      }
+    }
   };
 
-  // Mock function to request a reward from the catalog
+  // Handle reward request
   const handleRequestReward = (reward: Reward) => {
     setRequestedReward(reward);
 
-    if (currentEmployee.points >= reward.pointsCost) {
+    if (employeePoints && employeePoints.points >= reward.pointsCost) {
       setShowRequestModal(true);
     } else {
-      setPointsNeeded(reward.pointsCost - currentEmployee.points);
+      setPointsNeeded(reward.pointsCost - (employeePoints?.points || 0));
       setShowNotEnoughPointsModal(true);
     }
   };
 
   // Confirm a reward request
-  const confirmRequestReward = () => {
-    // In a real app, this would send a request to the server
-    setShowRequestModal(false);
-    // You could also show a success notification here
+  const confirmRequestReward = async () => {
+    if (requestedReward && currentUser?.uid) {
+      try {
+        // Here you would implement the logic to request a reward
+        // This might involve creating a new employee reward with status "pending"
+        setShowRequestModal(false);
+        // You could also show a success notification here
+      } catch (error) {
+        console.error("Error requesting reward:", error);
+        // You might want to show an error message to the user here
+      }
+    }
   };
 
   return (
@@ -237,7 +177,7 @@ const Rewards: React.FC = () => {
                   />
                 </svg>
                 <span className="text-xl font-bold text-indigo-600">
-                  {currentEmployee.points} Points
+                  {employeePoints?.points} Points
                 </span>
               </div>
             </div>
@@ -291,190 +231,247 @@ const Rewards: React.FC = () => {
                 View your earned rewards and their status
               </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Reward
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Type
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Value
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Date Awarded
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Status
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {employeeRewards.map((reward) => (
-                    <tr key={reward.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {reward.name}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {reward.description}
+            {employeeRewards.length === 0 ? (
+              <div className="text-center py-12">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  No rewards yet
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  You haven't earned any rewards yet. Keep up the good work!
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Reward
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Type
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Value
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Date Awarded
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Status
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {employeeRewards.map((reward) => (
+                      <tr key={reward.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {reward.rewardName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {reward.rewardType}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                          {reward.type.charAt(0).toUpperCase() +
-                            reward.type.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {reward.value}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {reward.dateAwarded}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            reward.status === "pending"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : reward.status === "approved"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {reward.status.charAt(0).toUpperCase() +
-                            reward.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {reward.status === "approved" && (
-                          <button
-                            onClick={() => {
-                              setSelectedReward(reward);
-                              setShowClaimModal(true);
-                            }}
-                            className="text-indigo-600 hover:text-indigo-900"
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                            {reward.rewardType.charAt(0).toUpperCase() +
+                              reward.rewardType.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {reward.rewardValue}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {reward.dateAwarded}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              reward.status === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : reward.status === "approved"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
                           >
-                            Claim Reward
-                          </button>
-                        )}
-                        {reward.status === "claimed" && (
-                          <span className="text-gray-500">
-                            Claimed on {reward.claimedDate}
+                            {reward.status.charAt(0).toUpperCase() +
+                              reward.status.slice(1)}
                           </span>
-                        )}
-                        {reward.status === "pending" && (
-                          <span className="text-gray-500">
-                            Awaiting Approval
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          {reward.status === "approved" && (
+                            <button
+                              onClick={() => {
+                                setSelectedReward(reward);
+                                setShowClaimModal(true);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              Claim Reward
+                            </button>
+                          )}
+                          {reward.status === "claimed" && (
+                            <span className="text-gray-500">
+                              Claimed on {reward.claimedDate}
+                            </span>
+                          )}
+                          {reward.status === "pending" && (
+                            <span className="text-gray-500">
+                              Awaiting Approval
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {/* Rewards Catalog View */}
         {currentView === "catalog" && (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {availableRewards.map((reward) => (
-              <div
-                key={reward.id}
-                className="bg-white overflow-hidden shadow rounded-lg"
-              >
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="flex justify-between">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {reward.name}
-                    </h3>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {reward.type.charAt(0).toUpperCase() +
-                        reward.type.slice(1)}
-                    </span>
-                  </div>
-                  <div className="mt-2">
-                    <p className="text-sm text-gray-500">
-                      {reward.description}
-                    </p>
-                  </div>
-                  <div className="mt-3">
-                    <span className="text-sm font-medium text-gray-900">
-                      Value: {reward.value}
-                    </span>
-                  </div>
-                  <div className="mt-1">
-                    <span className="text-sm text-gray-600">
-                      Criteria: {reward.criteria}
-                    </span>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="inline-flex items-center">
-                      <svg
-                        className="h-5 w-5 text-indigo-600 mr-1"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      <span className="text-indigo-600 font-medium">
-                        {reward.pointsCost} Points
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleRequestReward(reward)}
-                      className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white ${
-                        currentEmployee.points >= reward.pointsCost
-                          ? "bg-indigo-600 hover:bg-indigo-700"
-                          : "bg-gray-400 cursor-not-allowed"
-                      }`}
-                      disabled={currentEmployee.points < reward.pointsCost}
-                    >
-                      {currentEmployee.points >= reward.pointsCost
-                        ? "Request Reward"
-                        : "Not Enough Points"}
-                    </button>
-                  </div>
-                </div>
+          <div>
+            {availableRewards.length === 0 ? (
+              <div className="text-center py-12 bg-white shadow rounded-lg">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  No rewards available
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  There are no rewards available in the catalog at the moment.
+                </p>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {availableRewards.map((reward) => (
+                  <div
+                    key={reward.id}
+                    className="bg-white overflow-hidden shadow rounded-lg"
+                  >
+                    <div className="px-4 py-5 sm:p-6">
+                      <div className="flex justify-between">
+                        <h3 className="text-lg font-medium text-gray-900">
+                          {reward.name}
+                        </h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {reward.type.charAt(0).toUpperCase() +
+                            reward.type.slice(1)}
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-500">
+                          {reward.description}
+                        </p>
+                      </div>
+                      <div className="mt-3">
+                        <span className="text-sm font-medium text-gray-900">
+                          Value: {reward.value}
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <span className="text-sm text-gray-600">
+                          Criteria: {reward.criteria}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between">
+                        <div className="inline-flex items-center">
+                          <svg
+                            className="h-5 w-5 text-indigo-600 mr-1"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          <span className="text-indigo-600 font-medium">
+                            {reward.pointsCost} Points
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRequestReward(reward)}
+                          className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white ${
+                            !employeePoints ||
+                            employeePoints.points < reward.pointsCost
+                              ? "bg-gray-400 cursor-not-allowed"
+                              : "bg-indigo-600 hover:bg-indigo-700"
+                          }`}
+                          disabled={
+                            !employeePoints ||
+                            employeePoints.points < reward.pointsCost
+                          }
+                        >
+                          {employeePoints &&
+                          employeePoints.points >= reward.pointsCost
+                            ? "Request Reward"
+                            : "Not Enough Points"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -489,28 +486,53 @@ const Rewards: React.FC = () => {
                 Track your achievements and earned points
               </p>
             </div>
-            <ul className="divide-y divide-gray-200">
-              {achievements.map((achievement) => (
-                <li key={achievement.id} className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <p className="text-sm font-medium text-indigo-600 truncate">
-                        {achievement.name}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {achievement.description}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {achievement.date}
-                      </p>
+            {achievements.length === 0 ? (
+              <div className="text-center py-12">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  No achievements yet
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  You haven't earned any achievements yet. Keep working hard!
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {achievements.map((achievement) => (
+                  <li key={achievement.id} className="px-4 py-4 sm:px-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <p className="text-sm font-medium text-indigo-600 truncate">
+                          {achievement.name}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {achievement.description}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {achievement.date}
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        +{achievement.pointsAwarded} Points
+                      </div>
                     </div>
-                    <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      +{achievement.pointsAwarded} Points
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -552,7 +574,7 @@ const Rewards: React.FC = () => {
                         className="text-lg leading-6 font-medium text-gray-900"
                         id="modal-headline"
                       >
-                        Claim {selectedReward.name}
+                        Claim {selectedReward.rewardName}
                       </h3>
                       <div className="mt-2">
                         <p className="text-sm text-gray-500">
@@ -619,7 +641,7 @@ const Rewards: React.FC = () => {
             </div>
             <p className="text-gray-700">
               Reward claimed:{" "}
-              <span className="font-medium">{selectedReward?.name}</span>
+              <span className="font-medium">{selectedReward?.rewardName}</span>
             </p>
             <p className="text-gray-500 text-sm mt-2">
               You will be notified when your claim is processed.
