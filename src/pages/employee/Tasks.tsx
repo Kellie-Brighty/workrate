@@ -34,6 +34,8 @@ interface FormattedTask extends TaskData {
   createdByName?: string;
   createdByAvatar?: string;
   dueDateRenegotiationStatus?: "pending" | "approved" | "rejected";
+  timeEstimate?: string;
+  timeSpent?: number;
 }
 
 // Extended interface for project data returned from getProject
@@ -143,7 +145,7 @@ const formatTask = async (task: FormattedTask) => {
     checklist: Array.isArray(task.checklist) ? task.checklist : [],
     attachments: Array.isArray(task.attachments) ? task.attachments : [],
     timeEstimate: task.timeEstimate || "",
-    timeSpent: task.timeSpent || "",
+    timeSpent: task.timeSpent || 0,
   };
 };
 
@@ -160,8 +162,10 @@ type DisplayTask = {
   checklist: any[];
   attachments: any[];
   timeEstimate: string;
-  timeSpent: string;
+  timeSpent: number;
   dueDateRenegotiationStatus?: "pending" | "approved" | "rejected";
+  timeUnit?: "days" | "hours";
+  estimatedHours?: number;
 };
 
 // Define types for other state variables
@@ -204,6 +208,13 @@ const Tasks = () => {
     DueDateRenegotiationRequest[]
   >([]);
   const [_loadingRenegotiations, setLoadingRenegotiations] = useState(false);
+
+  // Upcoming task state
+  const [upcomingTask, setUpcomingTask] = useState<DisplayTask | null>(null);
+  const [upcomingTimeRemaining, setUpcomingTimeRemaining] = useState<{
+    days: number;
+    hours: number;
+  } | null>(null);
 
   // Set up real-time listener for tasks
   useEffect(() => {
@@ -325,6 +336,18 @@ const Tasks = () => {
 
     fetchRenegotiationRequests();
   }, [userData?.email]);
+
+  // After tasks are updated from the database, update the upcoming task/time
+  useEffect(() => {
+    const updateUpcoming = () => {
+      const { task, timeRemaining } = getUpcomingTask(tasks);
+      setUpcomingTask(task);
+      setUpcomingTimeRemaining(timeRemaining);
+    };
+    updateUpcoming();
+    const interval = setInterval(updateUpcoming, 60 * 1000); // update every minute
+    return () => clearInterval(interval);
+  }, [tasks]);
 
   // Apply filters to tasks
   const filteredTasks = tasks.filter((task) => {
@@ -592,15 +615,14 @@ const Tasks = () => {
       {/* Upcoming Task with Closest Due Date */}
       {!loading &&
         (() => {
-          const { task, timeRemaining } = getUpcomingTask(tasks);
-          if (task && timeRemaining) {
-            const isUrgent = timeRemaining.days < 2;
+          if (upcomingTask && upcomingTimeRemaining) {
+            const isUrgent = upcomingTimeRemaining.days < 2;
             return (
               <div
                 className={`mb-6 p-4 rounded-lg shadow ${
                   isUrgent
                     ? "bg-red-50 border border-red-200"
-                    : "bg-blue-50 border border-blue-200"
+                    : "bg-blue-50 border-blue-200"
                 }`}
               >
                 <div className="flex flex-col md:flex-row justify-between">
@@ -630,10 +652,10 @@ const Tasks = () => {
                       </span>
                     </div>
                     <h3 className="text-lg font-semibold text-gray-800">
-                      {task.title}
+                      {upcomingTask.title}
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Project: {task.project.name}
+                      Project: {upcomingTask.project.name}
                     </p>
                   </div>
                   <div
@@ -642,26 +664,28 @@ const Tasks = () => {
                     }`}
                   >
                     <div className="text-xl font-bold">
-                      {timeRemaining.days > 0
-                        ? `${timeRemaining.days} day${
-                            timeRemaining.days !== 1 ? "s" : ""
+                      {upcomingTimeRemaining.days > 0
+                        ? `${upcomingTimeRemaining.days} day${
+                            upcomingTimeRemaining.days !== 1 ? "s" : ""
                           }`
                         : ""}
-                      {timeRemaining.hours > 0 || timeRemaining.days === 0
-                        ? ` ${timeRemaining.hours} hour${
-                            timeRemaining.hours !== 1 ? "s" : ""
+                      {upcomingTimeRemaining.hours > 0 ||
+                      upcomingTimeRemaining.days === 0
+                        ? ` ${upcomingTimeRemaining.hours} hour${
+                            upcomingTimeRemaining.hours !== 1 ? "s" : ""
                           }`
                         : ""}
                     </div>
                     <div className="text-sm">remaining until due</div>
                     <div className="text-xs text-gray-500 mt-1">
-                      Due on {new Date(task.dueDate).toLocaleDateString()}
+                      Due on{" "}
+                      {new Date(upcomingTask.dueDate).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
                 <div className="mt-2 flex justify-end">
                   <button
-                    onClick={() => handleOpenTaskDetails(task)}
+                    onClick={() => handleOpenTaskDetails(upcomingTask)}
                     className={`text-sm px-3 py-1 rounded ${
                       isUrgent
                         ? "bg-red-200 text-red-800 hover:bg-red-300"
@@ -898,7 +922,9 @@ const Tasks = () => {
                           />
                         </svg>
                         <span className="text-xs text-gray-500">
-                          Est: {task.timeEstimate}
+                          {task.timeUnit === "hours"
+                            ? `Est: ${task.estimatedHours} hours`
+                            : `Est: ${task.timeEstimate}`}
                         </span>
                       </div>
                     </div>
@@ -1261,7 +1287,9 @@ const Tasks = () => {
                         <div>
                           <p className="text-xs text-gray-500">Estimated</p>
                           <p className="text-sm text-gray-900">
-                            {selectedTask.timeEstimate}
+                            {selectedTask.timeUnit === "hours"
+                              ? `${selectedTask.estimatedHours} hours`
+                              : selectedTask.timeEstimate}
                           </p>
                         </div>
                         <div>
@@ -1526,7 +1554,7 @@ const Tasks = () => {
               checklist: [],
               attachments: [],
               timeEstimate: "0 hours",
-              timeSpent: "0 hours",
+              timeSpent: 0,
             };
 
             // Add it to tasks and open it for editing

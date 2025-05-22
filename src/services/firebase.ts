@@ -149,6 +149,8 @@ export interface ProjectData {
   description: string;
   startDate: string;
   endDate: string;
+  timeUnit: "days" | "hours";
+  estimatedHours?: number;
   progress: number;
   status: string;
   priority: string;
@@ -296,11 +298,12 @@ export interface TaskData {
   status: "Not Started" | "In Progress" | "Completed" | "Overdue";
   priority: "Low" | "Medium" | "High" | "Critical";
   dueDate: string;
+  timeUnit: "days" | "hours";
+  estimatedHours?: number;
+  timeSpent?: number;
   createdBy: string; // User ID
   checklist?: { id: number; text: string; completed: boolean }[];
   attachments?: { id: number; name: string; size: string; date: string }[];
-  timeEstimate?: string;
-  timeSpent?: string;
   createdAt?: any; // Timestamp
   updatedAt?: any; // Timestamp
 }

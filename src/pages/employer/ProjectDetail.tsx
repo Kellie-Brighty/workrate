@@ -26,7 +26,6 @@ import {
 import {
   generateWhatsAppLink,
   generateProjectAddedMessage,
-  generateTaskAssignedMessage,
 } from "../../utils/whatsappUtils";
 
 // Add interface for Project type that extends ProjectData
@@ -113,6 +112,8 @@ const ProjectDetail: React.FC = () => {
     description: "",
     assignedTo: "",
     dueDate: "",
+    timeUnit: "days",
+    estimatedHours: 0,
     status: "Not Started",
     priority: "Medium",
   });
@@ -397,7 +398,8 @@ const ProjectDetail: React.FC = () => {
     if (
       !taskFormData.title ||
       !taskFormData.assignedTo ||
-      !taskFormData.dueDate
+      (taskFormData.timeUnit === "days" && !taskFormData.dueDate) ||
+      (taskFormData.timeUnit === "hours" && !taskFormData.estimatedHours)
     ) {
       showError("Validation Error", "Please fill in all required fields");
       return;
@@ -413,7 +415,9 @@ const ProjectDetail: React.FC = () => {
         assignedTo: taskFormData.assignedTo,
         status: taskFormData.status as "Not Started",
         priority: taskFormData.priority as "Medium",
-        dueDate: taskFormData.dueDate,
+        dueDate: taskFormData.dueDate || "",
+        timeUnit: taskFormData.timeUnit as "days" | "hours",
+        estimatedHours: taskFormData.estimatedHours,
         createdBy: userData.id,
       });
 
@@ -433,39 +437,14 @@ const ProjectDetail: React.FC = () => {
         description: "",
         assignedTo: "",
         dueDate: "",
+        timeUnit: "days",
+        estimatedHours: 0,
         status: "Not Started",
         priority: "Medium",
       });
       setShowAddTaskModal(false);
-
-      // Send WhatsApp notification to assigned employee
-      if (taskFormData.assignedTo) {
-        try {
-          const employee = await getEmployee(taskFormData.assignedTo);
-          if (
-            employee &&
-            "whatsappNumber" in employee &&
-            employee.whatsappNumber
-          ) {
-            const message = generateTaskAssignedMessage(
-              taskFormData.title,
-              project.name,
-              new Date(taskFormData.dueDate).toLocaleDateString(),
-              window.location.origin
-            );
-            const whatsappLink = generateWhatsAppLink(
-              employee.whatsappNumber as string,
-              message
-            );
-            window.open(whatsappLink, "_blank");
-          }
-        } catch (error) {
-          console.error("Error sending WhatsApp notification:", error);
-          // Don't fail the task creation if notification fails
-        }
-      }
     } catch (error) {
-      console.error("Error adding task:", error);
+      console.error("Error creating task:", error);
       showError("Error", "Failed to create task");
     } finally {
       setAddingTask(false);
@@ -850,151 +829,152 @@ const ProjectDetail: React.FC = () => {
                 </div>
               )}
 
-               {/* Category-specific information section */}
-      {project && (
-        <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              Project Extra Information
-            </h3>
-          </div>
-          <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
-            <dl className="sm:divide-y sm:divide-gray-200">
-              {/* Show different fields based on category */}
-              {project.category === "Development" && (
-                <>
-                  {project.githubRepo && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        GitHub Repository
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <a
-                          href={project.githubRepo}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900 break-all"
-                        >
-                          {project.githubRepo}
-                        </a>
-                      </dd>
-                    </div>
-                  )}
-                  {project.figmaFile && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Figma File
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <a
-                          href={project.figmaFile}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900 break-all"
-                        >
-                          {project.figmaFile}
-                        </a>
-                      </dd>
-                    </div>
-                  )}
-                  {project.jiraBoard && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Jira Board
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <a
-                          href={project.jiraBoard}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900 break-all"
-                        >
-                          {project.jiraBoard}
-                        </a>
-                      </dd>
-                    </div>
-                  )}
-                </>
-              )}
-              {project.category === "Design" && (
-                <>
-                  {project.figmaFile && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Figma File
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <a
-                          href={project.figmaFile}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900 break-all"
-                        >
-                          {project.figmaFile}
-                        </a>
-                      </dd>
-                    </div>
-                  )}
-                  {project.designSystemUrl && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Design System
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <a
-                          href={project.designSystemUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900 break-all"
-                        >
-                          {project.designSystemUrl}
-                        </a>
-                      </dd>
-                    </div>
-                  )}
-                </>
-              )}
-              {project.category === "Marketing" && (
-                <>
-                  {project.marketingBrief && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Marketing Brief
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 whitespace-pre-wrap">
-                        {project.marketingBrief}
-                      </dd>
-                    </div>
-                  )}
-                  {project.targetAudience && (
-                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                      <dt className="text-sm font-medium text-gray-500">
-                        Target Audience
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        {project.targetAudience}
-                      </dd>
-                    </div>
-                  )}
-                </>
-              )}
-              {/* Show a message if no extra information is available */}
-              {!project.githubRepo &&
-                !project.figmaFile &&
-                !project.jiraBoard &&
-                !project.designSystemUrl &&
-                !project.marketingBrief &&
-                !project.targetAudience && (
-                  <div className="py-4 sm:py-5 sm:px-6">
-                    <p className="text-sm text-gray-500 italic">
-                      No additional information available for this project.
-                    </p>
+              {/* Category-specific information section */}
+              {project && (
+                <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
+                  <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Project Extra Information
+                    </h3>
                   </div>
-                )}
-            </dl>
-          </div>
-        </div>
-      )}
+                  <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
+                    <dl className="sm:divide-y sm:divide-gray-200">
+                      {/* Show different fields based on category */}
+                      {project.category === "Development" && (
+                        <>
+                          {project.githubRepo && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                GitHub Repository
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <a
+                                  href={project.githubRepo}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-900 break-all"
+                                >
+                                  {project.githubRepo}
+                                </a>
+                              </dd>
+                            </div>
+                          )}
+                          {project.figmaFile && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Figma File
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <a
+                                  href={project.figmaFile}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-900 break-all"
+                                >
+                                  {project.figmaFile}
+                                </a>
+                              </dd>
+                            </div>
+                          )}
+                          {project.jiraBoard && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Jira Board
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <a
+                                  href={project.jiraBoard}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-900 break-all"
+                                >
+                                  {project.jiraBoard}
+                                </a>
+                              </dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {project.category === "Design" && (
+                        <>
+                          {project.figmaFile && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Figma File
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <a
+                                  href={project.figmaFile}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-900 break-all"
+                                >
+                                  {project.figmaFile}
+                                </a>
+                              </dd>
+                            </div>
+                          )}
+                          {project.designSystemUrl && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Design System
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <a
+                                  href={project.designSystemUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-900 break-all"
+                                >
+                                  {project.designSystemUrl}
+                                </a>
+                              </dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {project.category === "Marketing" && (
+                        <>
+                          {project.marketingBrief && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Marketing Brief
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 whitespace-pre-wrap">
+                                {project.marketingBrief}
+                              </dd>
+                            </div>
+                          )}
+                          {project.targetAudience && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                              <dt className="text-sm font-medium text-gray-500">
+                                Target Audience
+                              </dt>
+                              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                {project.targetAudience}
+                              </dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {/* Show a message if no extra information is available */}
+                      {!project.githubRepo &&
+                        !project.figmaFile &&
+                        !project.jiraBoard &&
+                        !project.designSystemUrl &&
+                        !project.marketingBrief &&
+                        !project.targetAudience && (
+                          <div className="py-4 sm:py-5 sm:px-6">
+                            <p className="text-sm text-gray-500 italic">
+                              No additional information available for this
+                              project.
+                            </p>
+                          </div>
+                        )}
+                    </dl>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -1853,10 +1833,49 @@ const ProjectDetail: React.FC = () => {
             </div>
             <div>
               <label
+                htmlFor="timeUnit"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Time Unit
+              </label>
+              <select
+                id="timeUnit"
+                name="timeUnit"
+                value={taskFormData.timeUnit}
+                onChange={handleTaskFormChange}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              >
+                <option value="days">Days</option>
+                <option value="hours">Hours</option>
+              </select>
+            </div>
+          </div>
+          {taskFormData.timeUnit === "hours" ? (
+            <div>
+              <label
+                htmlFor="estimatedHours"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Estimated Hours
+              </label>
+              <input
+                type="number"
+                id="estimatedHours"
+                name="estimatedHours"
+                min="0"
+                step="0.5"
+                value={taskFormData.estimatedHours}
+                onChange={handleTaskFormChange}
+                className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          ) : (
+            <div>
+              <label
                 htmlFor="dueDate"
                 className="block text-sm font-medium text-gray-700"
               >
-                Due Date *
+                Due Date
               </label>
               <input
                 type="date"
@@ -1865,44 +1884,7 @@ const ProjectDetail: React.FC = () => {
                 value={taskFormData.dueDate}
                 onChange={handleTaskFormChange}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-                required
               />
-            </div>
-          </div>
-          {taskFormData.assignedTo && (
-            <div>
-              <label
-                htmlFor="whatsappNumber"
-                className="block text-sm font-medium text-gray-700"
-              >
-                WhatsApp Number (for notifications)
-              </label>
-              <div className="mt-1 flex items-center">
-                <input
-                  type="text"
-                  id="whatsappNumber"
-                  name="whatsappNumber"
-                  placeholder="Country code + number (e.g. 14155552671)"
-                  className="block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-                  defaultValue={
-                    teamMembers.find((m) => m.id === taskFormData.assignedTo)
-                      ?.whatsappNumber || ""
-                  }
-                  onChange={(e) => {
-                    // Update the member's WhatsApp number in the state
-                    const updatedMembers = teamMembers.map((member) => {
-                      if (member.id === taskFormData.assignedTo) {
-                        return { ...member, whatsappNumber: e.target.value };
-                      }
-                      return member;
-                    });
-                    setTeamMembers(updatedMembers);
-                  }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Enter WhatsApp number with country code (no + symbol)
-              </p>
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
@@ -2028,19 +2010,17 @@ const ProjectDetail: React.FC = () => {
                           className="text-xs p-1 border border-gray-300 rounded"
                           defaultValue={emp.whatsappNumber || ""}
                           onChange={(e) => {
-                            // Update the employee's WhatsApp number in the availableEmployees array
-                            const updatedEmployees = availableEmployees.map(
-                              (employee) => {
-                                if (employee.id === emp.id) {
-                                  return {
-                                    ...employee,
-                                    whatsappNumber: e.target.value,
-                                  };
-                                }
-                                return employee;
+                            // Update the member's WhatsApp number in the state
+                            const updatedMembers = teamMembers.map((member) => {
+                              if (member.id === emp.id) {
+                                return {
+                                  ...member,
+                                  whatsappNumber: e.target.value,
+                                };
                               }
-                            );
-                            setAvailableEmployees(updatedEmployees);
+                              return member;
+                            });
+                            setTeamMembers(updatedMembers);
                           }}
                         />
                       </div>

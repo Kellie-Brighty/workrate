@@ -20,6 +20,8 @@ const CreateProject: React.FC = () => {
     description: "",
     startDate: "",
     endDate: "",
+    timeUnit: "days" as "days" | "hours",
+    estimatedHours: 0,
     priority: "medium",
     category: "",
   });
@@ -114,6 +116,9 @@ const CreateProject: React.FC = () => {
         status: "Not Started",
         progress: 0,
         createdBy: userData.id,
+        timeUnit: formData.timeUnit,
+        estimatedHours:
+          formData.timeUnit === "hours" ? formData.estimatedHours : undefined,
         // Add AI task generation options
         taskGeneration: {
           autoAssign: taskGenOptions.autoAssign,
@@ -216,43 +221,90 @@ const CreateProject: React.FC = () => {
 
                 <div className="sm:col-span-2">
                   <label
-                    htmlFor="startDate"
+                    htmlFor="timeUnit"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Start Date
+                    Time Unit
                   </label>
                   <div className="mt-1">
-                    <input
-                      type="date"
-                      name="startDate"
-                      id="startDate"
+                    <select
+                      id="timeUnit"
+                      name="timeUnit"
                       required
-                      value={formData.startDate}
+                      value={formData.timeUnit}
                       onChange={handleChange}
                       className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                    />
+                    >
+                      <option value="days">Days</option>
+                      <option value="hours">Hours</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="endDate"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Estimated End Date
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      type="date"
-                      name="endDate"
-                      id="endDate"
-                      required
-                      value={formData.endDate}
-                      onChange={handleChange}
-                      className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                    />
+                {formData.timeUnit === "hours" ? (
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="estimatedHours"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Estimated Hours
+                    </label>
+                    <div className="mt-1">
+                      <input
+                        type="number"
+                        name="estimatedHours"
+                        id="estimatedHours"
+                        min="0"
+                        step="0.5"
+                        value={formData.estimatedHours}
+                        onChange={handleChange}
+                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="startDate"
+                        className="block text-sm font-medium text-gray-700"
+                      >
+                        Start Date
+                      </label>
+                      <div className="mt-1">
+                        <input
+                          type="date"
+                          name="startDate"
+                          id="startDate"
+                          required
+                          value={formData.startDate}
+                          onChange={handleChange}
+                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="endDate"
+                        className="block text-sm font-medium text-gray-700"
+                      >
+                        Estimated End Date
+                      </label>
+                      <div className="mt-1">
+                        <input
+                          type="date"
+                          name="endDate"
+                          id="endDate"
+                          required
+                          value={formData.endDate}
+                          onChange={handleChange}
+                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="sm:col-span-2">
                   <label
@@ -368,42 +420,42 @@ const CreateProject: React.FC = () => {
                             No employees found
                           </div>
                         ) : (
-                        <ul className="divide-y divide-gray-200">
+                          <ul className="divide-y divide-gray-200">
                             {employees.map((employee) => (
-                            <li
-                              key={employee.id}
-                              className="p-3 hover:bg-gray-50"
-                            >
-                              <div className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedEmployees.includes(
-                                    employee.id
-                                  )}
-                                  onChange={() =>
-                                    toggleEmployeeSelection(employee.id)
-                                  }
-                                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                                />
-                                <div className="ml-3 flex items-center">
-                                  <img
-                                    src={employee.avatar}
-                                    alt={employee.name}
-                                    className="h-8 w-8 rounded-full mr-3"
+                              <li
+                                key={employee.id}
+                                className="p-3 hover:bg-gray-50"
+                              >
+                                <div className="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedEmployees.includes(
+                                      employee.id
+                                    )}
+                                    onChange={() =>
+                                      toggleEmployeeSelection(employee.id)
+                                    }
+                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                                   />
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {employee.name}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
+                                  <div className="ml-3 flex items-center">
+                                    <img
+                                      src={employee.avatar}
+                                      alt={employee.name}
+                                      className="h-8 w-8 rounded-full mr-3"
+                                    />
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {employee.name}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
                                         {employee.position}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </div>
                     </div>

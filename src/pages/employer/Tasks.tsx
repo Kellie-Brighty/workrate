@@ -100,6 +100,8 @@ type DisplayTask = {
   projectName?: string;
   projectInfo?: any;
   createdAt?: any;
+  timeUnit?: "days" | "hours";
+  estimatedHours?: number;
 };
 
 const Tasks: React.FC = () => {
@@ -1023,22 +1025,40 @@ const Tasks: React.FC = () => {
                   // Get values from form
                   const titleElement = document.getElementById(
                     "edit-task-title"
-                  ) as HTMLInputElement;
+                  ) as HTMLInputElement | null;
                   const descriptionElement = document.getElementById(
                     "edit-task-description"
-                  ) as HTMLTextAreaElement;
+                  ) as HTMLTextAreaElement | null;
                   const priorityElement = document.getElementById(
                     "edit-task-priority"
-                  ) as HTMLSelectElement;
+                  ) as HTMLSelectElement | null;
                   const statusElement = document.getElementById(
                     "edit-task-status"
-                  ) as HTMLSelectElement;
+                  ) as HTMLSelectElement | null;
                   const dueDateElement = document.getElementById(
                     "edit-task-due-date"
-                  ) as HTMLInputElement;
+                  ) as HTMLInputElement | null;
                   const assigneeElement = document.getElementById(
                     "edit-task-assignee"
-                  ) as HTMLSelectElement;
+                  ) as HTMLSelectElement | null;
+                  const timeUnitElement = document.getElementById(
+                    "edit-task-time-unit"
+                  ) as HTMLSelectElement | null;
+                  const estimatedHoursElement = document.getElementById(
+                    "edit-task-estimated-hours"
+                  ) as HTMLInputElement | null;
+
+                  if (
+                    !titleElement ||
+                    !descriptionElement ||
+                    !priorityElement ||
+                    !statusElement ||
+                    !dueDateElement ||
+                    !assigneeElement ||
+                    !timeUnitElement
+                  ) {
+                    throw new Error("Form elements not found");
+                  }
 
                   // Update the task in Firebase
                   await updateTask(selectedTask.id, {
@@ -1048,6 +1068,11 @@ const Tasks: React.FC = () => {
                     status: statusElement.value as TaskData["status"],
                     dueDate: dueDateElement.value,
                     assignedTo: assigneeElement.value || undefined,
+                    timeUnit: timeUnitElement.value as "days" | "hours",
+                    estimatedHours:
+                      timeUnitElement.value === "hours"
+                        ? Number(estimatedHoursElement?.value || 0)
+                        : undefined,
                   });
 
                   // Close the modal
@@ -1141,9 +1166,10 @@ const Tasks: React.FC = () => {
                   defaultValue={selectedTask.priority}
                   className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
                 >
-                  <option>Low</option>
-                  <option>Medium</option>
-                  <option>High</option>
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
                 </select>
               </div>
               <div>
@@ -1156,32 +1182,48 @@ const Tasks: React.FC = () => {
                 <select
                   id="edit-task-status"
                   defaultValue={selectedTask.status}
-                  onChange={(e) =>
-                    handleStatusChange(selectedTask.id, e.target.value)
-                  }
                   className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
                 >
-                  <option>Not Started</option>
-                  <option>In Progress</option>
-                  <option>Completed</option>
+                  <option value="Not Started">Not Started</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
                 </select>
               </div>
             </div>
             <div>
               <label
-                htmlFor="edit-task-tags"
+                htmlFor="edit-task-time-unit"
                 className="block text-sm font-medium text-gray-700"
               >
-                Tags
+                Time Unit
               </label>
-              <input
-                type="text"
-                id="edit-task-tags"
-                defaultValue={selectedTask.tags?.join(", ") || ""}
+              <select
+                id="edit-task-time-unit"
+                defaultValue={selectedTask.timeUnit || "days"}
                 className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
-                placeholder="Comma-separated tags"
-              />
+              >
+                <option value="days">Days</option>
+                <option value="hours">Hours</option>
+              </select>
             </div>
+            {selectedTask.timeUnit === "hours" && (
+              <div>
+                <label
+                  htmlFor="edit-task-estimated-hours"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Estimated Hours
+                </label>
+                <input
+                  type="number"
+                  id="edit-task-estimated-hours"
+                  min="0"
+                  step="0.5"
+                  defaultValue={selectedTask.estimatedHours || 0}
+                  className="mt-1 block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                />
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1235,6 +1277,7 @@ const Tasks: React.FC = () => {
                     dueDate: dueDateElement.value,
                     projectId: projectElement.value,
                     createdBy: userData.id,
+                    timeUnit: "days",
                   });
 
                   // Close the modal
