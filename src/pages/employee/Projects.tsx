@@ -472,6 +472,35 @@ const Projects = () => {
     return diffDays;
   };
 
+  // Helper to format remaining time
+  function formatRemainingTime(endDate: Date | null): string {
+    if (!endDate) return "N/A";
+    const now = new Date();
+    const diffMs = endDate.getTime() - now.getTime();
+    const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+    if (diffHours < 0) return "Overdue";
+    if (diffHours < 24) return `${diffHours} hours remaining`;
+    const diffDays = Math.ceil(diffHours / 24);
+    return `${diffDays} days remaining`;
+  }
+
+  // Helper to calculate end date for hourly-based projects
+  function getProjectEndDate(project: any) {
+    if (project.timeUnit === "hours" && project.estimatedHours) {
+      if (!project.startDate) return null;
+      const startDate = new Date(project.startDate);
+      if (isNaN(startDate.getTime())) return null;
+      const calculatedEndDate = new Date(
+        startDate.getTime() + project.estimatedHours * 60 * 60 * 1000
+      );
+      return calculatedEndDate;
+    }
+    if (!project.deadline) return null;
+    const endDate = new Date(project.deadline);
+    if (isNaN(endDate.getTime())) return null;
+    return endDate;
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
@@ -673,9 +702,7 @@ const Projects = () => {
                       />
                     </svg>
                     <span className="text-xs text-gray-500">
-                      {calculateDaysLeft(project.deadline) > 0
-                        ? `${calculateDaysLeft(project.deadline)} days left`
-                        : "Overdue"}
+                      {formatRemainingTime(getProjectEndDate(project))}
                     </span>
                   </div>
                   <div className="flex -space-x-2">

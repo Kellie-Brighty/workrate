@@ -478,7 +478,7 @@ const Tasks: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {currentTasks.map((task) => {
-                    const effectiveStatus = getEffectiveStatus(task);
+                    getEffectiveStatus(task);
 
                     // Get assignee and project info or provide defaults
                     const assigneeName =
@@ -562,19 +562,20 @@ const Tasks: React.FC = () => {
                         </td>
                         <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                           <select
-                            value={effectiveStatus}
+                            value={getEffectiveStatus(task)}
                             onChange={(e) => {
                               e.stopPropagation();
                               handleStatusChange(task.id, e.target.value);
                             }}
                             onClick={(e) => e.stopPropagation()}
                             className={`text-xs inline-flex py-1 px-2 rounded-full ${getStatusColor(
-                              effectiveStatus
+                              getEffectiveStatus(task)
                             )} border-0 focus:ring-2 focus:ring-indigo-500`}
                           >
                             <option value="Not Started">Not Started</option>
                             <option value="In Progress">In Progress</option>
                             <option value="Completed">Completed</option>
+                            <option value="Overdue">Overdue</option>
                           </select>
                         </td>
                         <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">

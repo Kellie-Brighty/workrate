@@ -69,6 +69,54 @@ const getPriorityColor = (priority: string) => {
   }
 };
 
+// Helper to calculate end date for hourly-based projects
+function getProjectEndDate(project: Project) {
+  if (project.timeUnit === "hours" && project.estimatedHours) {
+    if (!project.startDate) return null;
+    const startDate = new Date(project.startDate);
+    if (isNaN(startDate.getTime())) return null;
+    const calculatedEndDate = new Date(
+      startDate.getTime() + project.estimatedHours * 60 * 60 * 1000
+    );
+    return calculatedEndDate;
+  }
+  if (!project.endDate) return null;
+  const endDate = new Date(project.endDate);
+  if (isNaN(endDate.getTime())) return null;
+  return endDate;
+}
+
+// Helper to calculate due date for hourly-based tasks
+function getTaskDueDate(task: any, project: Project) {
+  if (task.timeUnit === "hours" && task.estimatedHours) {
+    if (!project.startDate) return null;
+    const startDate = new Date(project.startDate);
+    if (isNaN(startDate.getTime())) return null;
+    const calculatedDueDate = new Date(
+      startDate.getTime() + task.estimatedHours * 60 * 60 * 1000
+    );
+    return calculatedDueDate;
+  }
+  if (!task.dueDate) return null;
+  const dueDate = new Date(task.dueDate);
+  if (isNaN(dueDate.getTime())) return null;
+  return dueDate;
+}
+
+// Add helper function to format remaining time
+function formatRemainingTime(endDate: Date | null): string {
+  if (!endDate) return "N/A";
+  const now = new Date();
+  const diffMs = endDate.getTime() - now.getTime();
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+
+  if (diffHours < 0) return "Overdue";
+  if (diffHours < 24) return `${diffHours} hours remaining`;
+
+  const diffDays = Math.ceil(diffHours / 24);
+  return `${diffDays} days remaining`;
+}
+
 const ProjectDetail: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const { userData } = useAuth();
@@ -585,8 +633,13 @@ const ProjectDetail: React.FC = () => {
               </div>
               <div className="mt-1 flex items-center text-sm text-gray-500">
                 <span className="truncate">
-                  {new Date(project.startDate).toLocaleDateString()} -{" "}
-                  {new Date(project.endDate).toLocaleDateString()}
+                  {project.startDate
+                    ? new Date(project.startDate).toLocaleDateString()
+                    : "N/A"}{" "}
+                  -{" "}
+                  {getProjectEndDate(project)
+                    ? getProjectEndDate(project)!.toLocaleDateString()
+                    : "N/A"}
                 </span>
                 <span className="mx-2">•</span>
                 <span
@@ -819,7 +872,12 @@ const ProjectDetail: React.FC = () => {
                                     clipRule="evenodd"
                                   />
                                 </svg>
-                                {new Date(task.dueDate).toLocaleDateString()}
+                                <p>
+                                  Due{" "}
+                                  {formatRemainingTime(
+                                    getTaskDueDate(task, project)
+                                  )}
+                                </p>
                               </div>
                             </div>
                           </li>
@@ -1020,7 +1078,9 @@ const ProjectDetail: React.FC = () => {
                         End Date
                       </dt>
                       <dd className="mt-1 text-sm text-gray-900">
-                        {new Date(project.endDate).toLocaleDateString()}
+                        {getProjectEndDate(project)
+                          ? getProjectEndDate(project)!.toLocaleDateString()
+                          : "N/A"}
                       </dd>
                     </div>
                     <div className="sm:col-span-2">
@@ -1283,7 +1343,10 @@ const ProjectDetail: React.FC = () => {
                               />
                             </svg>
                             <p>
-                              Due {new Date(task.dueDate).toLocaleDateString()}
+                              Due{" "}
+                              {formatRemainingTime(
+                                getTaskDueDate(task, project)
+                              )}
                             </p>
                           </div>
                         </div>

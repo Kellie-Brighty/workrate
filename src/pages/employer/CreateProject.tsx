@@ -104,11 +104,18 @@ const CreateProject: React.FC = () => {
       // Use the selectedEmployees directly as they are now Firebase IDs
       const teamMembers = selectedEmployees;
 
+      // Determine startDate value
+      let startDateToUse = formData.startDate;
+      if (formData.timeUnit === "hours") {
+        // Use current timestamp for hourly-based projects
+        startDateToUse = new Date().toISOString();
+      }
+
       // Map form data to ProjectData structure
       const projectData = {
         name: formData.title,
         description: formData.description,
-        startDate: formData.startDate,
+        startDate: startDateToUse,
         endDate: formData.endDate,
         priority: formData.priority,
         category: formData.category,
@@ -241,6 +248,26 @@ const CreateProject: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="startDate"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Start Date
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      type="date"
+                      name="startDate"
+                      id="startDate"
+                      required
+                      value={formData.startDate}
+                      onChange={handleChange}
+                      className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                    />
+                  </div>
+                </div>
+
                 {formData.timeUnit === "hours" ? (
                   <div className="sm:col-span-2">
                     <label
@@ -256,6 +283,7 @@ const CreateProject: React.FC = () => {
                         id="estimatedHours"
                         min="0"
                         step="0.5"
+                        required
                         value={formData.estimatedHours}
                         onChange={handleChange}
                         className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
@@ -263,47 +291,25 @@ const CreateProject: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <div className="sm:col-span-2">
-                      <label
-                        htmlFor="startDate"
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Start Date
-                      </label>
-                      <div className="mt-1">
-                        <input
-                          type="date"
-                          name="startDate"
-                          id="startDate"
-                          required
-                          value={formData.startDate}
-                          onChange={handleChange}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        />
-                      </div>
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="endDate"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Estimated End Date
+                    </label>
+                    <div className="mt-1">
+                      <input
+                        type="date"
+                        name="endDate"
+                        id="endDate"
+                        required
+                        value={formData.endDate}
+                        onChange={handleChange}
+                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                      />
                     </div>
-
-                    <div className="sm:col-span-2">
-                      <label
-                        htmlFor="endDate"
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Estimated End Date
-                      </label>
-                      <div className="mt-1">
-                        <input
-                          type="date"
-                          name="endDate"
-                          id="endDate"
-                          required
-                          value={formData.endDate}
-                          onChange={handleChange}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        />
-                      </div>
-                    </div>
-                  </>
+                  </div>
                 )}
 
                 <div className="sm:col-span-2">

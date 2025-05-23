@@ -130,9 +130,9 @@ const formatTask = async (task: FormattedTask) => {
     status: task.status || "To Do",
     priority: task.priority || "Medium",
     dueDate: task.dueDate || new Date().toISOString().split("T")[0],
-    project: {
+    project: projectData || {
       id: task.projectId || "",
-      name: projectData?.name || task.projectName || "Unknown Project",
+      name: (projectData as any)?.name || task.projectName || "Unknown Project",
     },
     assignedBy: {
       id: task.createdBy || "",
@@ -146,6 +146,9 @@ const formatTask = async (task: FormattedTask) => {
     attachments: Array.isArray(task.attachments) ? task.attachments : [],
     timeEstimate: task.timeEstimate || "",
     timeSpent: task.timeSpent || 0,
+    createdAt: task.createdAt,
+    estimatedHours: task.estimatedHours,
+    timeUnit: task.timeUnit,
   };
 };
 
@@ -157,7 +160,7 @@ type DisplayTask = {
   status: string;
   priority: string;
   dueDate: string;
-  project: { id: string; name: string };
+  project: { id: string; name: string; startDate?: string };
   assignedBy: { id: string; name: string; avatar: string };
   checklist: any[];
   attachments: any[];
@@ -174,6 +177,42 @@ type TaskToComplete = {
   title: string;
   newStatus: string;
 };
+
+// Helper to format remaining time
+function formatRemainingTime(endDate: Date | null): string {
+  if (!endDate) return "N/A";
+  const now = new Date();
+  const diffMs = endDate.getTime() - now.getTime();
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+  if (diffHours < 0) return "Overdue";
+  if (diffHours < 24) return `${diffHours} hours remaining`;
+  const diffDays = Math.ceil(diffHours / 24);
+  return `${diffDays} days remaining`;
+}
+
+// Helper to calculate due date for hourly-based tasks
+function getTaskDueDate(task: any, _project: any) {
+  if (task.timeUnit === "hours" && task.estimatedHours) {
+    // Strictly use task.createdAt for hourly-based tasks
+    if (!task.createdAt) return null;
+    let baseTime: Date | null = null;
+    if (typeof task.createdAt === "object" && "seconds" in task.createdAt) {
+      baseTime = new Date(task.createdAt.seconds * 1000);
+    } else {
+      baseTime = new Date(task.createdAt);
+    }
+    if (!baseTime || isNaN(baseTime.getTime())) return null;
+    const calculatedDueDate = new Date(
+      baseTime.getTime() + task.estimatedHours * 60 * 60 * 1000
+    );
+
+    return calculatedDueDate;
+  }
+  if (!task.dueDate) return null;
+  const dueDate = new Date(task.dueDate);
+  if (isNaN(dueDate.getTime())) return null;
+  return dueDate;
+}
 
 const Tasks = () => {
   const { userData } = useAuth();
@@ -215,6 +254,9 @@ const Tasks = () => {
     days: number;
     hours: number;
   } | null>(null);
+
+  // Add state for countdown
+  const [countdown, setCountdown] = useState<string>("");
 
   // Set up real-time listener for tasks
   useEffect(() => {
@@ -348,6 +390,31 @@ const Tasks = () => {
     const interval = setInterval(updateUpcoming, 60 * 1000); // update every minute
     return () => clearInterval(interval);
   }, [tasks]);
+
+  // Add effect to update countdown for the upcoming deadline
+  useEffect(() => {
+    if (!upcomingTask) return;
+    const updateCountdown = () => {
+      const dueDate = getTaskDueDate(upcomingTask, upcomingTask.project);
+      if (!dueDate) {
+        setCountdown("N/A");
+        return;
+      }
+      const now = new Date();
+      const diffMs = dueDate.getTime() - now.getTime();
+      if (diffMs <= 0) {
+        setCountdown("Overdue");
+        return;
+      }
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+      setCountdown(`${hours}h ${minutes}m ${seconds}s`);
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [upcomingTask]);
 
   // Apply filters to tasks
   const filteredTasks = tasks.filter((task) => {
@@ -676,10 +743,21 @@ const Tasks = () => {
                           }`
                         : ""}
                     </div>
-                    <div className="text-sm">remaining until due</div>
+
                     <div className="text-xs text-gray-500 mt-1">
                       Due on{" "}
                       {new Date(upcomingTask.dueDate).toLocaleDateString()}
+                    </div>
+                    {upcomingTask && (
+                      <div className="text-sm font-semibold">
+                        Remaining:{" "}
+                        {formatRemainingTime(
+                          getTaskDueDate(upcomingTask, upcomingTask.project)
+                        )}
+                      </div>
+                    )}
+                    <div className="text-sm font-semibold">
+                      Countdown: {countdown}
                     </div>
                   </div>
                 </div>
