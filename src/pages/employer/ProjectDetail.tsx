@@ -205,6 +205,10 @@ const ProjectDetail: React.FC = () => {
     indexOfLastActivity
   );
 
+  // Add state for WhatsApp notification modal
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [newlyAddedMembers, setNewlyAddedMembers] = useState<any[]>([]);
+
   // Function to fetch project data
   const fetchProjectData = async () => {
     if (!projectId) return;
@@ -435,6 +439,14 @@ const ProjectDetail: React.FC = () => {
           // Don't fail the whole operation if notifications fail
         }
       }
+
+      // In handleAddTeamMembers, after adding members and before setAddingTeamMember(false):
+      setNewlyAddedMembers(
+        selectedEmployees
+          .map((id) => availableEmployees.find((emp) => emp.id === id))
+          .filter(Boolean)
+      );
+      setShowWhatsAppModal(true);
     } catch (error) {
       console.error("Error adding team members:", error);
       showError("Error", "Failed to add team members");
@@ -1520,17 +1532,36 @@ const ProjectDetail: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {currentActivities.map((_activity, index) => (
+                {currentActivities.map((activity, index) => (
                   <div
                     key={index}
                     className="flex items-start space-x-3 bg-white p-4 rounded-lg shadow"
                   >
-                    {/* Activity content */}
+                    <div className="flex-shrink-0">
+                      <span className="inline-block h-10 w-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                        {activity.userName ? activity.userName.charAt(0) : "U"}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {activity.userName || "Unknown User"}
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        {activity.action}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {activity.timestamp && activity.timestamp.seconds
+                          ? new Date(
+                              activity.timestamp.seconds * 1000
+                            ).toLocaleString()
+                          : ""}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-            {/* Pagination */}
+            {/* Pagination controls remain unchanged */}
             {projectActivities.length > activitiesPerPage && (
               <div className="mt-4 flex justify-center">
                 {/* Pagination controls */}
@@ -1879,7 +1910,7 @@ const ProjectDetail: React.FC = () => {
                           className="text-xs p-1 border border-gray-300 rounded"
                           defaultValue={emp.whatsappNumber || ""}
                           onChange={(e) => {
-                            // Update the member's WhatsApp number in the state
+                            // Update the member's WhatsApp number in the teamMembers state
                             const updatedMembers = teamMembers.map((member) => {
                               if (member.id === emp.id) {
                                 return {
@@ -1890,6 +1921,19 @@ const ProjectDetail: React.FC = () => {
                               return member;
                             });
                             setTeamMembers(updatedMembers);
+                            // Also update in availableEmployees so the WhatsApp modal sees the latest value
+                            const updatedAvailable = availableEmployees.map(
+                              (employee) => {
+                                if (employee.id === emp.id) {
+                                  return {
+                                    ...employee,
+                                    whatsappNumber: e.target.value,
+                                  };
+                                }
+                                return employee;
+                              }
+                            );
+                            setAvailableEmployees(updatedAvailable);
                           }}
                         />
                       </div>
@@ -2066,6 +2110,73 @@ const ProjectDetail: React.FC = () => {
         onConfirm={handleRemoveTeamMember}
         isLoading={removingMember}
       />
+
+      {showWhatsAppModal && (
+        <Modal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          title="Send WhatsApp Notifications"
+          size="medium"
+          actions={
+            <button
+              className="px-4 py-2 bg-indigo-600 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => setShowWhatsAppModal(false)}
+            >
+              Close
+            </button>
+          }
+        >
+          <div className="py-4 space-y-4">
+            {newlyAddedMembers.length === 0 ? (
+              <p className="text-gray-700">
+                No WhatsApp numbers available for new members.
+              </p>
+            ) : (
+              newlyAddedMembers.map((member) => {
+                const whatsappNumber = member.whatsappNumber;
+                return (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="font-medium">{member.name}</span>
+                      {whatsappNumber && (
+                        <span className="ml-2 text-xs text-gray-500">
+                          {whatsappNumber}
+                        </span>
+                      )}
+                    </div>
+                    {whatsappNumber ? (
+                      <button
+                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                        onClick={() => {
+                          const appUrl = window.location.origin;
+                          const message = generateProjectAddedMessage(
+                            project.name,
+                            appUrl
+                          );
+                          const whatsappLink = generateWhatsAppLink(
+                            whatsappNumber,
+                            message
+                          );
+                          window.open(whatsappLink, "_blank");
+                        }}
+                      >
+                        Send WhatsApp Notification
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-400">
+                        No WhatsApp number
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
