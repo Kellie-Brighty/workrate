@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { createProject, getEmployees } from "../../services/firebase";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  createProject,
+  getEmployees,
+  updateTicketStatus,
+} from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   useSuccessNotification,
@@ -11,19 +15,24 @@ import {
 
 const CreateProject: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userData } = useAuth();
   const showSuccess = useSuccessNotification();
   const showError = useErrorNotification();
 
+  // Get ticket data from navigation state if available
+  const ticketData = location.state?.ticketData;
+
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
+    title: ticketData?.title || "",
+    description: ticketData?.description || "",
     startDate: "",
     endDate: "",
     timeUnit: "days" as "days" | "hours",
     estimatedHours: 0,
-    priority: "medium",
-    category: "",
+    priority: ticketData?.priority || "medium",
+    category: ticketData?.category || "",
+    sourceTicketId: ticketData?.sourceTicketId || "",
   });
 
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
@@ -124,8 +133,12 @@ const CreateProject: React.FC = () => {
         progress: 0,
         createdBy: userData.id,
         timeUnit: formData.timeUnit,
-        estimatedHours:
-          formData.timeUnit === "hours" ? formData.estimatedHours : undefined,
+        ...(formData.timeUnit === "hours" && {
+          estimatedHours: formData.estimatedHours,
+        }),
+        ...(formData.sourceTicketId && {
+          sourceTicketId: formData.sourceTicketId,
+        }),
         // Add AI task generation options
         taskGeneration: {
           autoAssign: taskGenOptions.autoAssign,
@@ -135,7 +148,17 @@ const CreateProject: React.FC = () => {
       };
 
       // Create project in Firebase
-      await createProject(projectData);
+      const newProject = await createProject(projectData);
+
+      // If this project was created from a ticket, update the ticket status
+      if (formData.sourceTicketId) {
+        await updateTicketStatus(
+          formData.sourceTicketId,
+          "converted-to-project",
+          userData.id,
+          newProject.id
+        );
+      }
 
       showSuccess(
         "Project Created",

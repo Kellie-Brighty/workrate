@@ -21,6 +21,8 @@ import EmployeePerformance from "./pages/employee/Performance";
 import EmployeeProfile from "./pages/employee/Profile";
 import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import EmployerTickets from "./pages/employer/Tickets";
+import EmployeeTickets from "./pages/employee/Tickets";
 
 function App() {
   return (
@@ -153,6 +155,17 @@ function App() {
           }
         />
 
+        <Route
+          path="/employer/tickets"
+          element={
+            <ProtectedRoute requiredRole="employer">
+              <Layout userType="employer">
+                <EmployerTickets />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
         {/* Employee routes - wrapped in Layout and ProtectedRoute */}
         <Route
           path="/employee/dashboard"
@@ -215,6 +228,17 @@ function App() {
             <ProtectedRoute requiredRole="employee">
               <Layout userType="employee">
                 <EmployeeProfile />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employee/tickets"
+          element={
+            <ProtectedRoute requiredRole="employee">
+              <Layout userType="employee">
+                <EmployeeTickets />
               </Layout>
             </ProtectedRoute>
           }

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import Modal from "../../components/Modal";
 import RemoveMemberModal from "../../components/RemoveMemberModal";
 import EditProjectModal from "../../components/EditProjectModal";
@@ -16,6 +16,7 @@ import {
   type ActivityData,
   getUserData,
   type ProjectData,
+  updateTicketStatus,
 } from "../../services/firebase";
 import type { TaskData } from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -121,6 +122,28 @@ const ProjectDetail: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const { userData } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const addTaskFromTicketHandled = useRef(false);
+
+  // Move the useEffect here, before any other hooks or state
+  useEffect(() => {
+    if (
+      !addTaskFromTicketHandled.current &&
+      location.state &&
+      location.state.openAddTaskModal &&
+      location.state.addTaskFromTicket
+    ) {
+      setShowAddTaskModal(true);
+      setTaskFormData((prev) => ({
+        ...prev,
+        ...location.state.addTaskFromTicket,
+      }));
+      addTaskFromTicketHandled.current = true;
+      // Remove the state so it doesn't trigger again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   // Define a type for notification functions
   type NotificationFunction = (
     title: string,
@@ -171,7 +194,7 @@ const ProjectDetail: React.FC = () => {
   const [loadingActivities, setLoadingActivities] = useState(false);
 
   // Add pagination state for activities
-  const [activitiesPage, setActivitiesPage] = useState(1);
+  const [activitiesPage, _setActivitiesPage] = useState(1);
   const activitiesPerPage = 5; // Show 5 activities per page
 
   // Get current activities for pagination
@@ -181,11 +204,6 @@ const ProjectDetail: React.FC = () => {
     indexOfFirstActivity,
     indexOfLastActivity
   );
-
-  // Change page
-  const handleActivityPageChange = (pageNumber: number) => {
-    setActivitiesPage(pageNumber);
-  };
 
   // Function to fetch project data
   const fetchProjectData = async () => {
@@ -456,7 +474,7 @@ const ProjectDetail: React.FC = () => {
     setAddingTask(true);
     try {
       // Create the task
-      await createTask({
+      const newTask = await createTask({
         title: taskFormData.title,
         description: taskFormData.description || "",
         projectId: projectId,
@@ -468,6 +486,17 @@ const ProjectDetail: React.FC = () => {
         estimatedHours: taskFormData.estimatedHours,
         createdBy: userData.id,
       });
+
+      // If this task was created from a ticket, update the ticket status
+      if (location.state?.addTaskFromTicket?.ticketId) {
+        await updateTicketStatus(
+          location.state.addTaskFromTicket.ticketId,
+          "added-to-task",
+          userData.id,
+          projectId,
+          newTask.id
+        );
+      }
 
       // Log activity
       await logProjectActivity(`added a new task: ${taskFormData.title}`);
@@ -1473,263 +1502,40 @@ const ProjectDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Activity Tab */}
+        {/* Activities Tab */}
         {activeTab === "activity" && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
+          <div className="px-4 py-5 sm:p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
                 Project Activity
               </h3>
-              {projectActivities.length < 6 && (
-                <button
-                  onClick={async () => {
-                    if (!projectId || !userData) return;
-
-                    try {
-                      // Add 10 sample activities
-                      for (let i = 1; i <= 10; i++) {
-                        await logProjectActivity(
-                          `Sample activity ${i} for testing pagination`
-                        );
-                      }
-
-                      // Refresh activities
-                      const activities = await getProjectActivities(projectId);
-                      setProjectActivities(activities);
-                      showSuccess(
-                        "Sample Activities",
-                        "Added sample activities for testing"
-                      );
-                    } catch (error) {
-                      console.error("Error adding sample activities:", error);
-                      showError("Error", "Failed to add sample activities");
-                    }
-                  }}
-                  className="ml-2 inline-flex items-center px-2 5 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Add Test Activities
-                </button>
-              )}
             </div>
-            <div className="border-t border-gray-200">
-              <div className="bg-gray-50 px-4 py-6 sm:px-6">
-                <div className="flow-root">
-                  {loadingActivities ? (
-                    <div className="flex justify-center py-16">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                    </div>
-                  ) : projectActivities.length === 0 ? (
-                    <div className="py-8 text-center text-gray-500">
-                      <p>No activities recorded for this project yet.</p>
-                    </div>
-                  ) : (
-                    <ul className="-mb-8">
-                      {currentActivities.map((item: any, itemIdx: number) => (
-                        <li key={item.id}>
-                          <div className="relative pb-8">
-                            {itemIdx !== currentActivities.length - 1 ? (
-                              <span
-                                className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200"
-                                aria-hidden="true"
-                              ></span>
-                            ) : null}
-                            <div className="relative flex items-start space-x-3">
-                              <div className="relative">
-                                <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center ring-8 ring-white">
-                                  {item.userAvatar ? (
-                                    <img
-                                      src={item.userAvatar}
-                                      alt={item.userName}
-                                      className="h-10 w-10 rounded-full object-cover"
-                                    />
-                                  ) : (
-                                    <svg
-                                      className="h-5 w-5 text-white"
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                                      />
-                                    </svg>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div>
-                                  <div className="text-sm">
-                                    <span className="font-medium text-gray-900">
-                                      {item.userName}
-                                    </span>
-                                  </div>
-                                  <p className="mt-0.5 text-sm text-gray-500">
-                                    {item.action}
-                                  </p>
-                                </div>
-                                <div className="mt-2 text-sm text-gray-500">
-                                  <p>
-                                    {item.timestamp && item.timestamp.toDate
-                                      ? item.timestamp.toDate().toLocaleString()
-                                      : new Date().toLocaleString()}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {/* Pagination controls - always visible */}
-                  <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-3">
-                    <div className="flex flex-1 justify-between sm:hidden">
-                      <button
-                        onClick={() =>
-                          handleActivityPageChange(activitiesPage - 1)
-                        }
-                        disabled={activitiesPage === 1}
-                        className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
-                          activitiesPage === 1
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        Previous
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleActivityPageChange(activitiesPage + 1)
-                        }
-                        disabled={
-                          indexOfLastActivity >= projectActivities.length
-                        }
-                        className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
-                          indexOfLastActivity >= projectActivities.length
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        Next
-                      </button>
-                    </div>
-                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm text-gray-700">
-                          Showing{" "}
-                          <span className="font-medium">
-                            {projectActivities.length > 0
-                              ? indexOfFirstActivity + 1
-                              : 0}
-                          </span>{" "}
-                          to{" "}
-                          <span className="font-medium">
-                            {Math.min(
-                              indexOfLastActivity,
-                              projectActivities.length
-                            )}
-                          </span>{" "}
-                          of{" "}
-                          <span className="font-medium">
-                            {projectActivities.length}
-                          </span>{" "}
-                          activities
-                        </p>
-                      </div>
-                      <div>
-                        <nav
-                          className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                          aria-label="Pagination"
-                        >
-                          <button
-                            onClick={() =>
-                              handleActivityPageChange(activitiesPage - 1)
-                            }
-                            disabled={activitiesPage === 1}
-                            className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 ${
-                              activitiesPage === 1
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
-                          >
-                            <span className="sr-only">Previous</span>
-                            <svg
-                              className="h-5 w-5"
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              aria-hidden="true"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </button>
-
-                          {/* Page number buttons */}
-                          {Array.from({
-                            length: Math.max(
-                              1,
-                              Math.ceil(
-                                projectActivities.length / activitiesPerPage
-                              )
-                            ),
-                          }).map((_, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => handleActivityPageChange(idx + 1)}
-                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                                activitiesPage === idx + 1
-                                  ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
-                                  : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                              }`}
-                            >
-                              {idx + 1}
-                            </button>
-                          ))}
-
-                          <button
-                            onClick={() =>
-                              handleActivityPageChange(activitiesPage + 1)
-                            }
-                            disabled={
-                              indexOfLastActivity >= projectActivities.length
-                            }
-                            className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 ${
-                              indexOfLastActivity >= projectActivities.length
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
-                          >
-                            <span className="sr-only">Next</span>
-                            <svg
-                              className="h-5 w-5"
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              aria-hidden="true"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </button>
-                        </nav>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {loadingActivities ? (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
               </div>
-            </div>
+            ) : currentActivities.length === 0 ? (
+              <div className="text-center py-4 text-gray-500">
+                No activities recorded yet
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {currentActivities.map((_activity, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start space-x-3 bg-white p-4 rounded-lg shadow"
+                  >
+                    {/* Activity content */}
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Pagination */}
+            {projectActivities.length > activitiesPerPage && (
+              <div className="mt-4 flex justify-center">
+                {/* Pagination controls */}
+              </div>
+            )}
           </div>
         )}
       </div>

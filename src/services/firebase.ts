@@ -26,7 +26,9 @@ import {
   orderBy,
   onSnapshot,
   limit,
+  Query,
 } from "firebase/firestore";
+import type { DocumentData } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -2259,6 +2261,177 @@ export const onEmployeePointsUpdate = (
     } else {
       callback(null);
     }
+  });
+};
+
+// Ticket interfaces
+export interface Ticket {
+  id?: string;
+  title: string;
+  description: string;
+  category:
+    | "bug"
+    | "feature"
+    | "improvement"
+    | "other"
+    | "project-creation"
+    | "new-task";
+  status: "pending" | "ignored" | "converted-to-project" | "added-to-task";
+  priority: "low" | "medium" | "high";
+  createdBy: string; // employee id
+  createdAt?: any; // Timestamp
+  handledBy?: string; // employer/manager id
+  handledAt?: any; // Timestamp
+  relatedProjectId?: string;
+  relatedTaskId?: string;
+  comments?: TicketComment[];
+}
+
+export interface TicketComment {
+  id?: string;
+  ticketId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  content: string;
+  createdAt?: any; // Timestamp
+}
+
+// Ticket functions
+export const createTicket = async (
+  ticketData: Omit<Ticket, "id" | "createdAt">
+) => {
+  try {
+    const ticketRef = await addDoc(collection(db, "tickets"), {
+      ...ticketData,
+      status: "pending",
+      createdAt: serverTimestamp(),
+    });
+    return { id: ticketRef.id, ...ticketData };
+  } catch (error) {
+    console.error("Error creating ticket:", error);
+    throw error;
+  }
+};
+
+export const getTickets = async (status?: Ticket["status"]) => {
+  try {
+    let ticketsQuery: Query<DocumentData, DocumentData> = collection(
+      db,
+      "tickets"
+    );
+    if (status) {
+      ticketsQuery = query(ticketsQuery, where("status", "==", status));
+    }
+    const ticketsSnap = await getDocs(ticketsQuery);
+    return ticketsSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Ticket[];
+  } catch (error) {
+    console.error("Error getting tickets:", error);
+    throw error;
+  }
+};
+
+export const getEmployeeTickets = async (employeeId: string) => {
+  try {
+    const ticketsQuery = query(
+      collection(db, "tickets"),
+      where("createdBy", "==", employeeId)
+    );
+    const ticketsSnap = await getDocs(ticketsQuery);
+    return ticketsSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Ticket[];
+  } catch (error) {
+    console.error("Error getting employee tickets:", error);
+    throw error;
+  }
+};
+
+export const updateTicketStatus = async (
+  ticketId: string,
+  status: Ticket["status"],
+  handledBy: string,
+  relatedProjectId?: string,
+  relatedTaskId?: string
+) => {
+  try {
+    const ticketRef = doc(db, "tickets", ticketId);
+    await updateDoc(ticketRef, {
+      status,
+      handledBy,
+      handledAt: serverTimestamp(),
+      ...(relatedProjectId && { relatedProjectId }),
+      ...(relatedTaskId && { relatedTaskId }),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating ticket status:", error);
+    throw error;
+  }
+};
+
+export const addTicketComment = async (
+  commentData: Omit<TicketComment, "id" | "createdAt">
+) => {
+  try {
+    const commentRef = await addDoc(collection(db, "ticketComments"), {
+      ...commentData,
+      createdAt: serverTimestamp(),
+    });
+    return { id: commentRef.id, ...commentData };
+  } catch (error) {
+    console.error("Error adding ticket comment:", error);
+    throw error;
+  }
+};
+
+export const getTicketComments = async (ticketId: string) => {
+  try {
+    const commentsQuery = query(
+      collection(db, "ticketComments"),
+      where("ticketId", "==", ticketId),
+      orderBy("createdAt", "asc")
+    );
+    const commentsSnap = await getDocs(commentsQuery);
+    return commentsSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as TicketComment[];
+  } catch (error) {
+    console.error("Error getting ticket comments:", error);
+    throw error;
+  }
+};
+
+export const onTicketCommentsUpdate = (
+  callback: (comments: TicketComment[]) => void,
+  ticketId: string
+) => {
+  const commentsRef = collection(db, "tickets", ticketId, "comments");
+  return onSnapshot(commentsRef, (snapshot) => {
+    const comments = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as TicketComment[];
+    callback(comments);
+  });
+};
+
+// Add real-time listener for tickets
+export const onTicketsUpdate = (callback: (tickets: Ticket[]) => void) => {
+  const ticketsRef = collection(db, "tickets");
+  const q = query(ticketsRef, orderBy("createdAt", "desc"));
+
+  return onSnapshot(q, (snapshot) => {
+    const tickets: Ticket[] = [];
+    snapshot.forEach((doc) => {
+      tickets.push({ id: doc.id, ...doc.data() } as Ticket);
+    });
+    callback(tickets);
   });
 };
 
